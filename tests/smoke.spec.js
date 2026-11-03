@@ -11,6 +11,11 @@ const TODAY = "2026-11-04", TOMORROW = "2026-11-05", FRI = "2026-11-06";
 const state = (page) => page.evaluate(() => JSON.parse(JSON.stringify(window.__app.state)));
 const byTitle = async (page, title) => (await state(page)).tasks.find((t) => t.title === title);
 
+// Any uncaught page error fails the test it happened in.
+let pageErrors = [];
+test.beforeEach(async ({ page }) => { pageErrors = []; page.on("pageerror", (e) => pageErrors.push(e.message)); });
+test.afterEach(async () => { expect(pageErrors, "uncaught page errors").toEqual([]); });
+
 async function fresh(page, opts = {}) {
   await page.clock.setFixedTime(NOW);
   if (opts.width) await page.setViewportSize({ width: opts.width, height: opts.height || 900 });
