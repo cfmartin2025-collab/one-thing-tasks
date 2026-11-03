@@ -21,7 +21,23 @@ Regenerate icons with `powershell -File tools/make-icons.ps1`.
 Local preview: `powershell -ExecutionPolicy Bypass -File tools/serve.ps1` then open http://localhost:8765/.
 
 Note: an installed home-screen app has its own storage, separate from Safari and from claude.ai.
-Until sync is added, use Settings → Copy a backup / Restore to move data.
+Deleting the home-screen icon deletes that device's copy.
+
+## Sync across devices
+
+Outside claude.ai the app can sync through a private GitHub repo `<you>/one-thing-data` (file `data.json`).
+Settings → Sync across devices → paste a fine-grained token that can only read and write that one repo.
+The token is kept in that device's localStorage (`onething.sync`), never in the data or in backups.
+
+- This is the only network endpoint the page calls (`api.github.com`), and only after you connect.
+- Each round reads `data.json`, merges item by item (newest change wins; deletions are remembered for
+  90 days), and writes back only if something is new. The file's `sha` prevents blind overwrites.
+- Syncs on open, when you come back to the app, 2 s after a change, every minute while on screen,
+  and when the connection returns.
+- A device's own example tasks are not uploaded when it joins.
+
+Data version 2 adds `mod` (last change time) to tasks, projects, and templates, plus `gone` (deleted
+id → time) and `settingsMod`. `norm()` migrates older data.
 
 ## Data
 

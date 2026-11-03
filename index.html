@@ -224,7 +224,7 @@ var IC={
   plus:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>'
 };
 
-var S={tasks:[],projects:[],templates:[],settings:{todayLimit:5},updated:0};
+var S={tasks:[],projects:[],templates:[],settings:{todayLimit:5},updated:0,gone:{},settingsMod:0};
 var view="today", planDay=addDays(1), filt={energy:null}, sync="local", SAMPLE=null, pullOpen=false, newOpen=false;
 var VIEWS=[["today","Today"],["plan","Plan"],["inbox","Inbox"],["projects","Projects"],["later","Later"],["done","Done"]];
 var BUILTIN=[
@@ -241,14 +241,42 @@ function norm(r){
   r.tasks.forEach(function(t){
     if(t.plan===undefined){ t.plan=t.today?todayStr():null; }
     delete t.today;
+    if(t.mod===undefined) t.mod=t.doneAt||t.created||0;   /* v2: per-item change time for sync merges */
   });
+  r.projects.forEach(function(p){ if(p.mod===undefined) p.mod=0; });
+  r.templates.forEach(function(p){ if(p.mod===undefined) p.mod=0; });
+  r.gone=r.gone||{}; r.settingsMod=r.settingsMod||0;   /* v2: deleted ids -> time deleted */
+  var old=Date.now()-90*864e5;
+  Object.keys(r.gone).forEach(function(id){ if(r.gone[id]<old) delete r.gone[id]; });
   return r;
 }
-function loadLocal(){ try{ var j=localStorage.getItem(LS); if(j) S=norm(JSON.parse(j)); }catch(e){} }
+/* Change stamps: save() compares each item with its last saved copy, stamps what changed,
+   and records deletions, so devices can merge item by item. */
+var snap={};
+function stripMod(x){ var c=Object.assign({},x); delete c.mod; return JSON.stringify(c); }
+function snapAll(){
+  snap={settings:JSON.stringify(S.settings)};
+  S.tasks.forEach(function(x){snap["t:"+x.id]=stripMod(x)});
+  S.projects.forEach(function(x){snap["p:"+x.id]=stripMod(x)});
+  S.templates.forEach(function(x){snap["m:"+x.id]=stripMod(x)});
+}
+function stamp(){
+  var now=Date.now(), seen={};
+  if(!S.gone) S.gone={};
+  function walk(arr,k){ arr.forEach(function(x){ var key=k+x.id; seen[key]=1; if(snap[key]!==stripMod(x)) x.mod=now; }); }
+  walk(S.tasks,"t:"); walk(S.projects,"p:"); walk(S.templates,"m:");
+  Object.keys(snap).forEach(function(key){ if(key!=="settings"&&!seen[key]) S.gone[key.slice(2)]=now; });
+  if(snap.settings!==JSON.stringify(S.settings)) S.settingsMod=now;
+  snapAll();
+}
+function loadLocal(){ try{ var j=localStorage.getItem(LS); if(j) S=norm(JSON.parse(j)); }catch(e){} snapAll(); }
 function save(){
+  stamp();
   S.updated=Date.now();
   try{ localStorage.setItem(LS,JSON.stringify(S)); }catch(e){}
-  dirty=true; clearTimeout(saveTimer); saveTimer=setTimeout(flush,700); renderSync();
+  dirty=true; clearTimeout(saveTimer); saveTimer=setTimeout(flush,700);
+  if(GH.cfg){ clearTimeout(GH.timer); GH.timer=setTimeout(ghSync,2000); }
+  renderSync();
 }
 function flush(){
   if(!dbDoc||saving||!dirty) return;
@@ -259,9 +287,150 @@ function flush(){
 }
 function renderSync(){
   var el=$("#sync"); if(!el) return;
+  if(GH.cfg){
+    el.className="sync"+(GH.status==="ok"?" ok":"");
+    el.innerHTML="<b></b>"+({ok:"Synced",syncing:"Syncing...",error:"Sync problem",offline:"Offline, saved here"}[GH.status]||"Sync on");
+    return;
+  }
   el.className="sync"+(sync==="synced"&&!dirty?" ok":"");
   el.innerHTML="<b></b>"+(dbDoc?(sync==="synced"&&!dirty?"Synced":"Saving..."):"This device only");
 }
+
+/* ---------- sync through a private GitHub repo (installed app) ----------
+   The token lives only in this device's localStorage (key onething.sync), never in S or backups.
+   data.json in the repo holds S. Each round: read it, merge item by item (newest change wins,
+   deletions remembered), write back if anything is new. The file's sha guards against overwrites. */
+var GH={cfg:null,busy:false,again:false,timer:null,status:"",err:"",last:0}, GHKEY="onething.sync", GHFILE="data.json";
+function ghLoad(){ try{ GH.cfg=JSON.parse(localStorage.getItem(GHKEY)||"null"); }catch(e){ GH.cfg=null; } }
+function ghStore(){ try{ if(GH.cfg) localStorage.setItem(GHKEY,JSON.stringify(GH.cfg)); else localStorage.removeItem(GHKEY); }catch(e){} }
+function ghFetch(path,opt){
+  opt=opt||{};
+  var h={"Accept":"application/vnd.github+json","Authorization":"Bearer "+((opt.token)||GH.cfg.token)};
+  if(opt.body) h["Content-Type"]="application/json";
+  return fetch("https://api.github.com"+path,{method:opt.method||"GET",cache:"no-store",headers:h,body:opt.body?JSON.stringify(opt.body):undefined});
+}
+function ghErr(r){
+  if(r.status===401) return {msg:"GitHub did not accept the token. Paste a new one in Settings."};
+  if(r.status===403) return {msg:"The token cannot write to the repo. Check its Contents permission."};
+  if(r.status===404) return {msg:"Could not find the repo "+(GH.cfg?GH.cfg.repo:"")+"."};
+  return {msg:"GitHub answered "+r.status+". Try again in a minute."};
+}
+function b64enc(str){ var b=new TextEncoder().encode(str), s=""; for(var i=0;i<b.length;i+=32768) s+=String.fromCharCode.apply(null,b.subarray(i,i+32768)); return btoa(s); }
+function b64dec(str){ var s=atob(str.replace(/\s/g,"")), b=new Uint8Array(s.length); for(var i=0;i<s.length;i++) b[i]=s.charCodeAt(i); return new TextDecoder().decode(b); }
+function stable(v){
+  if(Array.isArray(v)) return "["+v.map(stable).join(",")+"]";
+  if(v&&typeof v==="object") return "{"+Object.keys(v).filter(function(k){return v[k]!==undefined}).sort().map(function(k){return JSON.stringify(k)+":"+stable(v[k])}).join(",")+"}";
+  return JSON.stringify(v===undefined?null:v);
+}
+function sameData(a,b){ var x=Object.assign({},a), y=Object.assign({},b); delete x.updated; delete y.updated; return stable(x)===stable(y); }
+function mergeState(a,b){
+  var gone=Object.assign({},a.gone);
+  Object.keys(b.gone||{}).forEach(function(id){ if(!(gone[id]>=b.gone[id])) gone[id]=b.gone[id]; });
+  function mergeArr(x,y){
+    var m={};
+    x.forEach(function(i){ m[i.id]=i; });
+    y.forEach(function(i){ var c=m[i.id]; if(!c||(i.mod||0)>(c.mod||0)) m[i.id]=i; });
+    return Object.keys(m).sort().map(function(id){return m[id]}).filter(function(i){
+      if(gone[i.id]===undefined) return true;
+      if((i.mod||0)>gone[i.id]){ delete gone[i.id]; return true; }   /* edited after it was deleted elsewhere: keep */
+      return false;
+    });
+  }
+  var out={tasks:mergeArr(a.tasks,b.tasks),projects:mergeArr(a.projects,b.projects),templates:mergeArr(a.templates,b.templates)};
+  out.gone=gone;
+  var sa=a.settingsMod||0, sb=b.settingsMod||0;
+  out.settings=JSON.parse(JSON.stringify(sb>sa?b.settings:a.settings)); out.settingsMod=Math.max(sa,sb);
+  out.updated=Math.max(a.updated||0,b.updated||0);
+  return norm(JSON.parse(JSON.stringify(out)));
+}
+function withoutExamples(s){
+  var c=JSON.parse(JSON.stringify(s));
+  c.tasks=c.tasks.filter(function(t){return !t.ex}); c.projects=c.projects.filter(function(p){return !p.ex});
+  return c;
+}
+function ghSync(){
+  if(!GH.cfg||!GH.cfg.token) return Promise.resolve();
+  clearTimeout(GH.timer); GH.timer=null;
+  if(GH.busy){ GH.again=true; return GH.busy; }
+  if(navigator.onLine===false){ GH.status="offline"; renderSync(); return Promise.resolve(); }
+  var wasOk=GH.status!=="error";
+  GH.status="syncing"; renderSync();
+  var path="/repos/"+GH.cfg.repo+"/contents/"+GHFILE, tries=0;
+  function round(){
+    tries++;
+    return ghFetch(path).then(function(r){
+      if(r.status===404) return null;
+      if(!r.ok) throw ghErr(r);
+      return r.json();
+    }).then(function(f){
+      var remote=null;
+      if(f){
+        if(f.encoding!=="base64") throw {msg:"The sync file has grown past 1 MB."};
+        remote=norm(JSON.parse(b64dec(f.content)));
+      }
+      /* First join on this device: its own example tasks are not worth spreading. */
+      var local=(remote&&!GH.cfg.joined)?withoutExamples(S):S;
+      var merged=remote?mergeState(local,remote):local;
+      if(!sameData(merged,S)){
+        S=merged; snapAll();
+        try{ localStorage.setItem(LS,JSON.stringify(S)); }catch(e){}
+        render();
+      }
+      if(!GH.cfg.joined){ GH.cfg.joined=true; ghStore(); }
+      if(remote&&sameData(merged,remote)) return;
+      var body={message:"Sync "+new Date().toISOString(),content:b64enc(JSON.stringify(merged))};
+      if(f) body.sha=f.sha;
+      return ghFetch(path,{method:"PUT",body:body}).then(function(r){
+        if((r.status===409||r.status===422)&&tries<4) return round();   /* someone else wrote first: merge again */
+        if(!r.ok) throw ghErr(r);
+      });
+    });
+  }
+  var p=round().then(function(){ GH.status="ok"; GH.err=""; GH.last=Date.now(); },function(e){
+    GH.status="error"; GH.err=(e&&e.msg)||"Could not reach GitHub. Your changes are saved here and will sync later.";
+    if(wasOk) toast("Sync problem. Details in Settings.");
+  }).then(function(){
+    GH.busy=false; renderSync(); refreshSyncBox();
+    if(GH.again){ GH.again=false; ghSync(); }
+  });
+  GH.busy=p;
+  return p;
+}
+function ghConnect(token){
+  token=String(token||"").trim();
+  if(!token){ GH.err="Paste the token first."; refreshSyncBox(); return; }
+  GH.err=""; GH.status="syncing"; refreshSyncBox();
+  ghFetch("/user",{token:token}).then(function(r){
+    if(!r.ok) throw r.status===401?{msg:"GitHub did not accept that token."}:ghErr(r);
+    return r.json();
+  }).then(function(u){
+    var repo=u.login+"/one-thing-data";
+    return ghFetch("/repos/"+repo,{token:token}).then(function(r){
+      if(r.status===404) throw {msg:"The token cannot see "+repo+". Give it access to that repo."};
+      if(!r.ok) throw ghErr(r);
+      GH.cfg={token:token,repo:repo,joined:false}; ghStore();
+      return ghSync();
+    });
+  }).catch(function(e){ GH.status="error"; GH.err=(e&&e.msg)||"Could not reach GitHub."; refreshSyncBox(); }).then(function(){
+    if(GH.cfg&&GH.status==="ok") toast("Sync is on.");
+    renderSync(); refreshSyncBox();
+  });
+}
+function syncBoxHtml(){
+  if(window.claude) return "";
+  var h='<div class="section" style="margin:4px 2px 0"><span>Sync across devices</span></div><div id="syncbox" class="fld" style="gap:8px">';
+  if(!GH.cfg){
+    h+='<span>Keeps your phone, iPad, and computer in step through your private GitHub repo <b>one-thing-data</b>.</span>'+
+      '<div class="pickrow"><input id="gh-token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste GitHub token" aria-label="GitHub token"><button class="btn" data-act="ghconnect"'+(GH.status==="syncing"?" disabled":"")+'>'+(GH.status==="syncing"?"Checking...":"Connect")+'</button></div>';
+  }else{
+    var when=GH.last?new Date(GH.last).toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"}):"";
+    h+='<span>Syncing with '+esc(GH.cfg.repo)+'. '+(GH.status==="syncing"?"Syncing now...":GH.status==="ok"?"Last synced "+esc(when)+".":GH.status==="offline"?"Offline. Changes are saved here.":"")+'</span>'+
+      '<div class="btns"><button class="btn small" data-act="ghsync">Sync now</button><button class="btn small ghost" data-act="ghoff">Turn off on this device</button></div>';
+  }
+  if(GH.err) h+='<span style="color:var(--bad)">'+esc(GH.err)+'</span>';
+  return h+'</div>';
+}
+function refreshSyncBox(){ var b=$("#syncbox"); if(b) b.outerHTML=syncBoxHtml().replace(/^[\s\S]*?(<div id="syncbox")/,"$1"); }
 function hasData(){return S.tasks.length>0||S.projects.length>0}
 function initSync(){
   var first=true;
@@ -279,7 +448,7 @@ function initSync(){
         dbDoc.onSnapshot(function(snap){
           var d=snap.exists?snap.data():null;
           if(d&&d.json){
-            try{ var rem=norm(JSON.parse(d.json)); if((rem.updated||0)>(S.updated||0)){ S=rem; try{localStorage.setItem(LS,JSON.stringify(S));}catch(e){} render(); } }catch(e){}
+            try{ var rem=norm(JSON.parse(d.json)); if((rem.updated||0)>(S.updated||0)){ S=rem; snapAll(); try{localStorage.setItem(LS,JSON.stringify(S));}catch(e){} render(); } }catch(e){}
           }
           if(first&&!snap.metadata.fromCache){
             first=false;
@@ -620,6 +789,8 @@ function openSettings(){
   openSheet('<h2>Settings</h2>'+
     '<label class="fld">Good day limit. Today notes when you go past it.<input id="s-lim" type="number" min="1" max="20" inputmode="numeric" value="'+S.settings.todayLimit+'"></label>'+
     (ex?'<button class="btn" data-act="clearex">Delete the example tasks</button>':"")+
+    syncBoxHtml()+
+    '<div class="section" style="margin:4px 2px 0"><span>Backup</span></div>'+
     '<button class="btn" data-act="copybackup">Copy a backup</button>'+
     '<label class="fld">Restore from a backup<textarea id="s-restore" placeholder="Paste backup text, then Restore"></textarea></label>'+
     '<div class="acts"><button class="btn ghost" data-act="restore">Restore</button><span class="btns"><button class="btn ghost" data-act="closesheet">Cancel</button><button class="btn primary" data-act="savesettings">Save</button></span></div>');
@@ -893,6 +1064,9 @@ document.addEventListener("click",function(ev){
       try{ var r=norm(JSON.parse($("#s-restore").value)); if(!Array.isArray(r.tasks)) throw 0; S=r; save(); closeSheet(); view="today"; render(); toast("Restored "+S.tasks.length+" tasks."); }
       catch(e){ toast("That is not a valid backup."); }
       break;
+    case "ghconnect": ghConnect($("#gh-token").value); break;
+    case "ghsync": ghSync(); refreshSyncBox(); break;
+    case "ghoff": GH.cfg=null; GH.status=""; GH.err=""; ghStore(); renderSync(); refreshSyncBox(); toast("Sync is off on this device. Your tasks stay here."); break;
     case "ask": openAsk(); break;
     case "askgo": askGo(); break;
     case "askstop": abortAsk(); ASK.busy=false; renderAsk(); break;
@@ -933,6 +1107,8 @@ document.addEventListener("input",function(ev){
   if(ev.target.id==="cap"){ ev.target.style.height="auto"; ev.target.style.height=Math.min(ev.target.scrollHeight,160)+"px"; }
 });
 
+ghLoad();
+if(window.claude) GH.cfg=null;   /* inside claude.ai the db capability syncs instead */
 loadLocal();
 render();
 initSync();
@@ -945,9 +1121,16 @@ try{
 /* Coming back to the app on a new day: refresh Today. */
 var lastDay=todayStr();
 document.addEventListener("visibilitychange",function(){
-  if(document.visibilityState==="visible"&&todayStr()!==lastDay){ lastDay=todayStr(); if(planDay<lastDay) planDay=addDays(1); render(); }
+  if(document.visibilityState==="visible"){
+    if(todayStr()!==lastDay){ lastDay=todayStr(); if(planDay<lastDay) planDay=addDays(1); render(); }
+    ghSync();
+  }else if(GH.timer){ ghSync(); }   /* leaving the app with unsent changes: send them now */
 });
-window.__app={get state(){return S},render:render,setView:function(v){view=v;render()}};
+/* GitHub sync: on open, when back online, and every minute while the app is on screen. */
+ghSync();
+window.addEventListener("online",function(){ ghSync(); });
+setInterval(function(){ if(document.visibilityState==="visible") ghSync(); },60000);
+window.__app={get state(){return S},render:render,setView:function(v){view=v;render()},sync:ghSync};
 })();
 </script>
 </body>
