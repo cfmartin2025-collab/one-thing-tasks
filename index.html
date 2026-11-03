@@ -4,6 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>One Thing Tasks</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="One Thing">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#f5f6f8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#10151c" media="(prefers-color-scheme: dark)">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=Figtree:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -928,6 +936,17 @@ document.addEventListener("input",function(ev){
 loadLocal();
 render();
 initSync();
+/* Installed app: offline cache. Skipped inside claude.ai (iframe) and on file://. */
+try{
+  if("serviceWorker" in navigator&&/^https?:$/.test(location.protocol)&&window.top===window.self&&!window.claude){
+    navigator.serviceWorker.register("sw.js").catch(function(){});
+  }
+}catch(e){}
+/* Coming back to the app on a new day: refresh Today. */
+var lastDay=todayStr();
+document.addEventListener("visibilitychange",function(){
+  if(document.visibilityState==="visible"&&todayStr()!==lastDay){ lastDay=todayStr(); if(planDay<lastDay) planDay=addDays(1); render(); }
+});
 window.__app={get state(){return S},render:render,setView:function(v){view=v;render()}};
 })();
 </script>
