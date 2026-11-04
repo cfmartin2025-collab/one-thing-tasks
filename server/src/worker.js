@@ -112,8 +112,10 @@ function spoken(added, tz) {
   return `Added ${t.title} to your Inbox.`;
 }
 
+// Secrets set from a Windows shell can arrive with a byte-order mark or a trailing newline.
+const clean = (s) => String(s || "").replace(/^﻿/, "").trim();
 async function vapidFrom(env) {
-  return { publicKey: env.VAPID_PUBLIC, privateJwk: JSON.parse(env.VAPID_PRIVATE), subject: env.APP_ORIGIN || "https://example.com/" };
+  return { publicKey: clean(env.VAPID_PUBLIC), privateJwk: JSON.parse(clean(env.VAPID_PRIVATE)), subject: env.APP_ORIGIN || "https://example.com/" };
 }
 
 /** The every-minute job. */
@@ -151,7 +153,7 @@ export default {
     if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: h });
     const url = new URL(req.url);
     try {
-      if (req.method === "GET" && url.pathname === "/vapid") return json({ publicKey: env.VAPID_PUBLIC }, 200, h);
+      if (req.method === "GET" && url.pathname === "/vapid") return json({ publicKey: clean(env.VAPID_PUBLIC) }, 200, h);
       if (req.method === "GET" && url.pathname === "/") return new Response("One Thing push server is running.", { headers: h });
 
       if (req.method === "POST" && url.pathname === "/subscribe") {

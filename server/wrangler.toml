@@ -9,7 +9,7 @@ APP_ORIGIN = "https://cfmartin2025-collab.github.io"
 # Filled in by tools/deploy-push.ps1 on first deploy.
 [[kv_namespaces]]
 binding = "OT"
-id = "REPLACE_WITH_KV_ID"
+id = "dfb2ba97c8004450ba6df354227eb785"
 
 # Every minute: send what is due.
 [triggers]

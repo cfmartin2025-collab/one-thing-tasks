@@ -113,3 +113,13 @@ test("vapid key is public", async () => {
   const r = await call("/vapid");
   assert.equal((await r.json()).publicKey, env.VAPID_PUBLIC);
 });
+
+test("keys stored with a byte-order mark or newline still work", async () => {
+  const pub = env.VAPID_PUBLIC;
+  env.VAPID_PUBLIC = "﻿" + pub + "\r\n";
+  env.VAPID_PRIVATE = "﻿" + env.VAPID_PRIVATE + "\r\n";
+  assert.equal((await (await call("/vapid")).json()).publicKey, pub);
+  await post("/subscribe", { subscription: await fakeSub("https://push.example/phone"), tz: "America/Chicago", token: TOKEN });
+  assert.equal(pushes.length, 1); // the hello push was signed and sent
+  assert.match(pushes[0].init.headers.Authorization, new RegExp("k=" + pub + "$"));
+});

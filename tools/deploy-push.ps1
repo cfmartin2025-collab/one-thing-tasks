@@ -20,12 +20,13 @@ try {
 
   # 2. VAPID keys (once). Kept locally in server\.vapid.json (git-ignored) so redeploys keep the same key.
   $vapidFile = Join-Path $server ".vapid.json"
-  if (-not (Test-Path $vapidFile)) {
-    node make-vapid.mjs | Set-Content -Path $vapidFile -Encoding ascii -NoNewline
-    $v = Get-Content $vapidFile -Raw | ConvertFrom-Json
-    $v.publicKey | npx --yes wrangler@4 secret put VAPID_PUBLIC | Out-Null
-    ($v.privateJwk | ConvertTo-Json -Compress) | npx --yes wrangler@4 secret put VAPID_PRIVATE | Out-Null
-    Write-Host "Push keys created."
+  # Secrets go up from a file with `secret bulk`: piping text into a program from Windows PowerShell
+  # adds a byte-order mark, which corrupts the key.
+  if (-not (Test-Path $vapidFile) -or $args -contains "-resetSecrets") {
+    node --input-type=module -e "import {writeFileSync,existsSync,readFileSync} from 'node:fs'; import {makeVapidKeys} from './src/webpush.js'; const f='.vapid.json'; const k=existsSync(f)?JSON.parse(readFileSync(f,'utf8').replace(/^﻿/,'')):await makeVapidKeys(); writeFileSync(f,JSON.stringify(k)); writeFileSync('.secrets.json',JSON.stringify({VAPID_PUBLIC:k.publicKey,VAPID_PRIVATE:JSON.stringify(k.privateJwk)}));"
+    npx --yes wrangler@4 secret bulk .secrets.json | Out-Null
+    Remove-Item .secrets.json -Force
+    Write-Host "Push keys stored."
   }
 
   # 3. Deploy.

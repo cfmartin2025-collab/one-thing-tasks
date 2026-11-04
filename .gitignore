@@ -5,3 +5,4 @@ tests/shots/
 server/.vapid.json
 server/.wrangler/
 server/node_modules/
+server/.secrets.json

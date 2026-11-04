@@ -863,7 +863,7 @@ function checkReminders(){
 /* Alerts when the app is closed: the push server (server/ in the repo) sends them.
    PUSH_URL is set after the server is deployed; until then none of this shows.
    A device signs up with the GitHub token it already uses for sync. */
-var PUSH_URL="", PUSHKEY="onething.push";
+var PUSH_URL="https://one-thing-push.cfmartin-2025.workers.dev", PUSHKEY="onething.push";
 function pushUrl(){ try{ return localStorage.getItem("onething.pushurl")||PUSH_URL; }catch(e){ return PUSH_URL; } }
 function pushOnHere(){ try{ return !!localStorage.getItem(PUSHKEY); }catch(e){ return false; } }
 function pushCapable(){ return !!(pushUrl()&&"serviceWorker" in navigator&&"PushManager" in window&&!window.claude); }
