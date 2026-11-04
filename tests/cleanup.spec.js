@@ -68,6 +68,17 @@ test("break into steps on a loose task still makes a project and keeps notes", a
   expect((await byTitle(page, "Step one")).notes).toBe("Call Dave first"); // edits typed before tapping "Too big?" are kept
 });
 
+test("adding in Later with a date schedules it instead of hiding it", async ({ page }) => {
+  await page.evaluate(() => window.__app.setView("later"));
+  await capture(page, "Idea with a date tomorrow");
+  await capture(page, "Plain idea");
+  const dated = await byTitle(page, "Idea with a date");
+  expect(dated.someday).toBe(false);
+  expect(dated.plan).toBeTruthy();
+  expect((await byTitle(page, "Plain idea")).someday).toBe(true);
+  await expect(page.locator("#toast")).toContainText("Added");
+});
+
 test("deleting a project can be undone and its steps return", async ({ page }) => {
   await page.locator('.nav[data-view="projects"]').first().click();
   await page.locator('[data-act="togglenewp"]').click();

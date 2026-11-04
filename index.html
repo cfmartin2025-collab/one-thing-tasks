@@ -567,7 +567,7 @@ function addFromText(raw){
     if(!t.project&&view.indexOf("p:")===0) t.project=view.slice(2);
     if(!t.plan&&view==="today") t.plan=todayStr();
     if(!t.plan&&view==="plan") t.plan=planDay;
-    if(view==="later") t.someday=true;
+    if(view==="later"&&!t.plan&&!t.due) t.someday=true;   /* a date wins over parking it */
     if(view==="inbox"&&!t.project&&!t.plan&&!t.due) t.inbox=true;
     S.tasks.push(t); added++; lastPlan=t.plan;
   });
