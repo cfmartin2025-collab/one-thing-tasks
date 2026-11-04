@@ -263,7 +263,7 @@ function snapAll(){
 function stamp(){
   var now=Date.now(), seen={};
   if(!S.gone) S.gone={};
-  function walk(arr,k){ arr.forEach(function(x){ var key=k+x.id; seen[key]=1; if(snap[key]!==stripMod(x)) x.mod=now; }); }
+  function walk(arr,k){ arr.forEach(function(x){ var key=k+x.id; seen[key]=1; if(snap[key]!==stripMod(x)){ x.mod=now; delete S.gone[x.id]; } }); }
   walk(S.tasks,"t:"); walk(S.projects,"p:"); walk(S.templates,"m:");
   Object.keys(snap).forEach(function(key){ if(key!=="settings"&&!seen[key]) S.gone[key.slice(2)]=now; });
   if(snap.settings!==JSON.stringify(S.settings)) S.settingsMod=now;
@@ -812,9 +812,9 @@ function startProject(id){
 
 /* ---------- toast ---------- */
 var toastT=null;
-function toast(msg,undo){
-  var el=$("#toast"); el.innerHTML="<span>"+esc(msg)+"</span>"+(undo?'<button id="undo">Undo</button>':"");
-  el.classList.add("show"); clearTimeout(toastT); toastT=setTimeout(function(){el.classList.remove("show")},3800);
+function toast(msg,undo,label,ms){
+  var el=$("#toast"); el.innerHTML="<span>"+esc(msg)+"</span>"+(undo?'<button id="undo">'+esc(label||"Undo")+'</button>':"");
+  el.classList.add("show"); clearTimeout(toastT); toastT=setTimeout(function(){el.classList.remove("show")},ms||(undo?6000:3800));
   if(undo) $("#undo").onclick=function(){ undo(); el.classList.remove("show"); };
 }
 
@@ -1035,7 +1035,11 @@ document.addEventListener("click",function(ev){
     case "savetask": saveTask(id); break;
     case "breakdown": openBreak(id); break;
     case "dobreak": doBreak(id); break;
-    case "deltask": S.tasks=S.tasks.filter(function(x){return x.id!==id}); save(); closeSheet(); render(); toast("Task deleted."); break;
+    case "deltask":
+      var gone1=task(id); if(!gone1) break;
+      S.tasks=S.tasks.filter(function(x){return x.id!==id}); save(); closeSheet(); render();
+      toast("Task deleted.",function(){ if(!task(gone1.id)){ S.tasks.push(gone1); save(); render(); toast("Task is back."); } });
+      break;
     case "newproject":
       var lines=cleanLines($("#newp").value);
       if(lines.length){ var np=createProject(lines[0],lines.slice(1),$("#newp-seq").checked); newOpen=false; save(); view="p:"+np.id; render(); toast("Project created"+(lines.length>1?" with "+(lines.length-1)+" steps":"")+"."); }
@@ -1053,7 +1057,18 @@ document.addEventListener("click",function(ev){
     case "back": view="projects"; render(); break;
     case "editproject": openProject(view.slice(2)); break;
     case "saveproject": var p=proj(id); if(p&&$("#p-name").value.trim()){ p.name=$("#p-name").value.trim(); p.sequential=$("#p-seq").checked; save(); closeSheet(); render(); } break;
-    case "delproject": S.tasks.forEach(function(x){ if(x.project===id){ x.project=null; if(!x.done) x.inbox=true; } }); S.projects=S.projects.filter(function(x){return x.id!==id}); save(); closeSheet(); view="projects"; render(); toast("Project deleted. Open tasks moved to Inbox."); break;
+    case "delproject":
+      var gp=proj(id); if(!gp) break;
+      var moved=S.tasks.filter(function(x){return x.project===id}).map(function(x){return {id:x.id,inbox:x.inbox}});
+      S.tasks.forEach(function(x){ if(x.project===id){ x.project=null; if(!x.done) x.inbox=true; } });
+      S.projects=S.projects.filter(function(x){return x.id!==id}); save(); closeSheet(); view="projects"; render();
+      toast("Project deleted. Open tasks moved to Inbox.",function(){
+        if(proj(gp.id)) return;
+        S.projects.push(gp);
+        moved.forEach(function(m){ var x=task(m.id); if(x&&!x.project){ x.project=gp.id; x.inbox=m.inbox; } });
+        save(); view="p:"+gp.id; render(); toast("Project is back.");
+      });
+      break;
     case "savesettings": var v=parseInt($("#s-lim").value,10); if(v>0) S.settings.todayLimit=Math.min(v,20); save(); closeSheet(); render(); break;
     case "clearex": S.tasks=S.tasks.filter(function(x){return !x.ex}); S.projects=S.projects.filter(function(x){return !x.ex}); save(); closeSheet(); view="today"; render(); break;
     case "copybackup":
