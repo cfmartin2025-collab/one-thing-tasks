@@ -67,7 +67,9 @@ test("break into steps on a loose task still makes a project and keeps notes", a
 });
 
 test("adding in Later with a date schedules it instead of hiding it", async ({ page }) => {
-  await page.evaluate(() => window.__app.setView("later"));
+  await page.locator('.nav[data-view="cal"]').first().click();
+  await page.locator('[data-act="tray"][data-v="later"]').click();
+  await page.locator('[data-act="dayadd"][data-v="later"]').click();
   await capture(page, "Idea with a date tomorrow");
   await capture(page, "Plain idea");
   const dated = await byTitle(page, "Idea with a date");
@@ -101,7 +103,8 @@ test("a date read from words can be undone with one tap: Keep as text", async ({
 
   // In the Inbox, keeping it as text puts it back in the Inbox.
   await page.locator('.nav[data-view="inbox"]').first().click();
-  await capture(page, "Prep for the review on mon");
+  await page.locator("#ask-in").fill("Prep for the review on mon");
+  await page.locator("#ask-in").press("Enter");
   await page.locator("#undo").click();
   const u = await byTitle(page, "Prep for the review on mon");
   expect(u.inbox).toBe(true);

@@ -31,6 +31,12 @@ async function capture(page, text) {
   await cap.fill(text);
   await cap.press("Enter");
 }
+// The Inbox has its own box (Save to Inbox / Sort it out); Enter saves.
+async function inboxAdd(page, text) {
+  const box = page.locator("#ask-in");
+  await box.fill(text);
+  await box.press("Enter");
+}
 
 test("loads, seeds examples, hides Claude buttons without window.claude", async ({ page }) => {
   const errors = [];
@@ -68,12 +74,12 @@ test("capture parses dates, project, context, minutes", async ({ page }) => {
 
   // Inbox capture stays in the inbox.
   await page.locator('.nav[data-view="inbox"]').first().click();
-  await capture(page, "Random thought");
+  await inboxAdd(page, "Random thought");
   expect((await byTitle(page, "Random thought")).inbox).toBe(true);
 });
 
 test("scheduling with the calendar button", async ({ page }) => {
-  await fresh(page);
+  await fresh(page, { width: 390, height: 860 }); // phone: rows keep their calendar button in Calendar
   await capture(page, "Move me");
   const row = page.locator("li.task", { hasText: "Move me" });
   await row.locator('[data-act="when"]').click();
@@ -82,8 +88,8 @@ test("scheduling with the calendar button", async ({ page }) => {
   expect((await byTitle(page, "Move me")).plan).toBe(TOMORROW);
   await expect(row).toHaveCount(0);
 
-  // Plan view shows it on tomorrow, then park it in Later.
-  await page.locator('.nav[data-view="plan"]').first().click();
+  // Calendar shows it on tomorrow, then park it in Later.
+  await page.locator('.nav[data-view="cal"]').first().click();
   const prow = page.locator("li.task", { hasText: "Move me" });
   await expect(prow).toBeVisible();
   await prow.locator('[data-act="when"]').click();
@@ -92,7 +98,7 @@ test("scheduling with the calendar button", async ({ page }) => {
 
   // Inbox triage one-tap Today.
   await page.locator('.nav[data-view="inbox"]').first().click();
-  await capture(page, "Triage me");
+  await inboxAdd(page, "Triage me");
   await page.locator("li.task", { hasText: "Triage me" }).locator('[data-v="today"]').click();
   const t = await byTitle(page, "Triage me");
   expect(t.plan).toBe(TODAY);

@@ -51,17 +51,23 @@ async function addKey(page, key = KEY, expectText = "Key saved") {
   await page.keyboard.press("Escape");
 }
 async function sortText(page, text) {
-  await page.locator('.nav[data-view="sort"]').first().click();
+  await page.locator('.nav[data-view="inbox"]').first().click();
   await page.locator("#ask-in").fill(text);
   await page.locator('[data-act="askgo"]').click();
 }
 
-test("without a key: Sort explains what it needs, no Claude buttons anywhere", async ({ page }) => {
+test("without a key: Inbox still saves, offers to turn Claude on, no Claude buttons anywhere", async ({ page }) => {
   const api = fakeClaude({ projects: [], tasks: [] });
   await open(page, api);
   await expect(page.locator('[data-act="ask"]')).toHaveCount(0);
-  await page.locator('.nav[data-view="sort"]').first().click();
-  await expect(page.locator("#main")).toContainText("Turn on Claude to use this");
+  await page.locator('.nav[data-view="inbox"]').first().click();
+  await expect(page.locator("#main")).toContainText("Turn on Claude");
+  await expect(page.locator('[data-act="askgo"]')).toHaveCount(0);
+  await page.locator("#ask-in").fill("Thought one\nThought two");
+  await page.locator('[data-act="inboxsave"]').click();
+  await expect(page.locator("li.task", { hasText: "Thought two" })).toHaveCount(1);
+  await expect(page.locator("#ask-in")).toHaveValue("");
+  expect(api.calls.length).toBe(0);
   await page.locator('[data-act="focus"]').click();
   await expect(page.locator('[data-act="stuck"]')).toHaveCount(0);
 });
@@ -168,7 +174,7 @@ test("a sync redraw while typing does not lose your text or focus", async ({ pag
   const api = fakeClaude({ projects: [], tasks: [] });
   await open(page, api);
   await addKey(page);
-  await page.locator('.nav[data-view="sort"]').first().click();
+  await page.locator('.nav[data-view="inbox"]').first().click();
   await page.locator("#ask-in").click();
   await page.keyboard.type("Half a thought");
   await page.evaluate(() => window.__app.render());

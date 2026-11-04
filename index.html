@@ -180,6 +180,67 @@ ul.list>li:first-child{border-top:0}
 .sync{font-size:12px}
 .sync b{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--line2);margin-right:6px}
 .sync.ok b{background:var(--ok)}
+/* calendar */
+.main.wide{max-width:1180px}
+.calbar{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:-6px 0 16px;flex-wrap:wrap}
+.seg{display:inline-flex;background:var(--soft);border-radius:12px;padding:3px}
+.seg button{padding:7px 16px;border-radius:9px;font-weight:600;font-size:14px;color:var(--muted);min-height:36px}
+.seg button.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.1)}
+.pager{display:flex;gap:2px;align-items:center}
+.pager .icon-btn{width:38px;height:38px;font-size:20px;line-height:1}
+.pager .btn{min-height:36px}
+.week{display:flex;flex-direction:column;gap:12px}
+.dcol{background:var(--surface);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.dhead{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:12px 16px 10px;font-weight:600}
+.dhead small{color:var(--muted);font-weight:500;font-size:13px}
+.dcol.today .dhead span{color:var(--accent)}
+.dcol .list>li:first-child{border-top:1px solid var(--line)}
+.dadd{display:block;width:100%;text-align:left;padding:10px 16px;color:var(--muted);font-size:14px;border-top:1px solid var(--line);min-height:42px}
+.dadd:hover{color:var(--ink);background:var(--soft)}
+.dcol .capwrap{margin:0;border-top:1px solid var(--line)}
+.dcol .capture{border:0;border-radius:0}
+.over-drop{outline:2px dashed var(--accent);outline-offset:-3px}
+li.task[draggable="true"]{cursor:grab}
+.month{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:10px 8px;margin-bottom:18px}
+.month .dow{font-size:12px;color:var(--muted);text-align:center;padding:2px 0 6px;font-weight:600}
+.mday{height:54px;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:7px;gap:3px;font-weight:600;font-size:15px;position:relative;font-variant-numeric:tabular-nums}
+.mday:hover{background:var(--soft)}
+.mday.blank{visibility:hidden}
+.mday.past{color:var(--muted);font-weight:500}
+.mday.today{color:var(--accent)}
+.mday.sel{background:var(--ink);color:var(--bg)}
+.mday .n{font-size:11px;font-weight:600;color:var(--muted);line-height:1}
+.mday.sel .n{color:var(--bg)}
+.mday .dd{position:absolute;top:6px;right:7px;width:6px;height:6px;border-radius:50%;background:var(--warn)}
+.trayh{display:flex;justify-content:space-between;align-items:center;width:100%;padding:14px 16px;font-weight:600;border-top:1px solid var(--line);min-height:50px;text-align:left}
+.trayh:first-child{border-top:0}
+.trayh span{color:var(--muted);font-weight:500;font-size:14px}
+.trayh:hover{background:var(--soft)}
+.links{display:flex;gap:4px 16px;flex-wrap:wrap;margin-top:6px}
+.tray .list>li:first-child{border-top:1px solid var(--line)}
+.tray .capwrap{margin:0;border-top:1px solid var(--line)}
+.tray .capture{border:0;border-radius:0}
+@media (min-width:980px){
+  .main.wide .week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;align-items:stretch}
+  .main.wide .week .dcol{min-height:240px;display:flex;flex-direction:column}
+  .main.wide .week .dcol .list{flex:1}
+  .main.wide .week .dhead{flex-direction:column;gap:0;padding:10px 10px 8px}
+  .main.wide .week .task{padding:9px 6px 9px 9px;gap:8px;font-size:14px}
+  .main.wide .week .task .side{display:none}
+  .main.wide .week .check{width:20px;height:20px}
+  .main.wide{padding-left:28px;padding-right:28px}
+  .main.wide .week .meta{font-size:12px;display:block;margin-top:2px}
+  .main.wide .week .meta span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .main.wide .week .meta span+span::before{content:none}
+  .main.wide .week .meta span:nth-child(n+3){display:none}
+  .main.wide .week .title{line-height:1.3}
+  .main.wide .week .dadd{padding:8px 10px;font-size:13px;margin-top:auto}
+  .main.wide .week .capture{padding:4px 4px 4px 10px}
+  .main.wide .week .capture .go{width:32px;height:32px}
+  .main.wide .week .hint{display:none!important}
+  .monthwrap{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:22px;align-items:start}
+  .mday{height:72px}
+}
 @media (max-width:760px){
   .app{grid-template-columns:1fr;grid-template-rows:1fr auto}
   .rail{order:2;flex-direction:row;border-right:0;border-top:1px solid var(--line);padding:4px 6px max(4px,env(safe-area-inset-bottom));gap:0}
@@ -231,7 +292,10 @@ var IC={
 
 var S={tasks:[],projects:[],templates:[],settings:{todayLimit:5},updated:0,gone:{},settingsMod:0};
 var view="today", planDay=addDays(1), filt={energy:null}, sync="local", SAMPLE=null, pullOpen=false, newOpen=false;
-var VIEWS=[["today","Today"],["plan","Plan"],["inbox","Inbox"],["projects","Projects"],["sort","Sort"],["later","Later"],["done","Done"]];
+var VIEWS=[["today","Today"],["cal","Calendar"],["inbox","Inbox"],["projects","Projects"]];
+/* Calendar state: week or month, how far paged, the picked day in month view,
+   which day has its inline add box open ("later" = the Later tray), which tray groups are open. */
+var CAL={mode:"week",week:0,month:0,sel:null,add:null,tray:{any:false,later:false}};
 var BUILTIN=[
   {name:"Commissioning visit",steps:["Pack laptop, cables, and tools","Confirm access and permits for the site","Back up the PLC program before touching anything","Verify I/O against the I/O list","Loop check analog inputs","Test alarms and shutdowns","Back up the final program","Write the service report"]},
   {name:"PLC and HMI build",steps:["Collect the I/O list, P&IDs, and control narrative","Set up the project folders","Build tags, UDTs, and AOIs","Write the control logic","Build the HMI screens","Simulate and test offline","Commission on site","Save as-builts and docs"]},
@@ -590,6 +654,7 @@ function addFromText(raw){
 /* Where a task with no date lands depends on the list you added it from. */
 function placeByView(t,v){
   v=v||view;
+  if(v==="cal"){ if(CAL.add==="later"){ if(!t.plan&&!t.due) t.someday=true; } else if(!t.plan&&CAL.add) t.plan=CAL.add; return; }
   if(!t.plan&&v==="today") t.plan=todayStr();
   if(!t.plan&&v==="plan") t.plan=planDay;
   if(v==="later"&&!t.plan&&!t.due) t.someday=true;   /* a date wins over parking it */
@@ -616,7 +681,7 @@ function taskRow(t,o){
     if(o.triage) side='<div class="side"><button class="btn small ghost" data-act="setday" data-v="today">Today</button><button class="btn small ghost" data-act="setday" data-v="tomorrow">Tomorrow</button>'+cal+'</div>';
     else side='<div class="side">'+(o.reorder?'<div class="mv"><button data-act="up" aria-label="Move up">&#9650;</button><button data-act="down" aria-label="Move down">&#9660;</button></div>':"")+cal+'</div>';
   }
-  return '<li class="task'+(t.done?" done":"")+(o.nextUp?" next-up":"")+(o.triage&&!t.done?" triage":"")+'" data-id="'+t.id+'">'+
+  return '<li class="task'+(t.done?" done":"")+(o.nextUp?" next-up":"")+(o.triage&&!t.done?" triage":"")+'" data-id="'+t.id+'"'+(o.drag&&!t.done?' draggable="true"':'')+'>'+
     '<button class="check" data-act="toggle" aria-label="'+(t.done?"Mark not done":"Mark done")+'"></button>'+
     '<div class="body" data-act="open"><div class="title">'+esc(t.title)+'</div>'+
     (m.length?'<div class="meta">'+m.join("")+'</div>':"")+'</div>'+side+'</li>';
@@ -640,50 +705,145 @@ function pullHtml(day){
     return '<li class="sug" data-id="'+t.id+'"><div class="body" data-act="open"><div class="title">'+esc(t.title)+'</div>'+(m.length?'<div class="meta">'+m.join("")+'</div>':"")+'</div><button class="icon-btn sm" data-act="pull" data-day="'+day+'" aria-label="Add">'+IC.plus+'</button></li>';
   }).join("")+'</ul>';
 }
+/* ---------- calendar ---------- */
+function doneOn(d){ return S.tasks.filter(function(t){ return t.done&&t.doneAt&&ymd(new Date(t.doneAt))===d; }).sort(function(a,b){return a.doneAt-b.doneAt}); }
+function shortDate(d){ return dt(d).toLocaleDateString(undefined,{month:"short",day:"numeric"}); }
+function monthBase(){ var b=new Date(); b.setHours(12,0,0,0); b.setDate(1); b.setMonth(b.getMonth()+CAL.month); return b; }
+function calSub(){
+  if(CAL.mode==="month") return esc(monthBase().toLocaleDateString(undefined,{month:"long",year:"numeric"}));
+  var s=addDays(7*CAL.week), e=addDays(7*CAL.week+6);
+  return (CAL.week===0?"Next 7 days &middot; ":"")+esc(shortDate(s))+" &ndash; "+esc(shortDate(e));
+}
+function calBar(){
+  var away=CAL.mode==="month"?CAL.month!==0:CAL.week!==0;
+  return '<div class="calbar"><div class="seg" role="group" aria-label="Calendar view">'+
+    '<button class="'+(CAL.mode==="week"?"on":"")+'" data-act="calmode" data-v="week">Week</button>'+
+    '<button class="'+(CAL.mode==="month"?"on":"")+'" data-act="calmode" data-v="month">Month</button></div>'+
+    '<div class="pager">'+(away?'<button class="btn small ghost" data-act="calnow">Today</button>':'')+
+    '<button class="icon-btn" data-act="calstep" data-v="-1" aria-label="Earlier">&lsaquo;</button>'+
+    '<button class="icon-btn" data-act="calstep" data-v="1" aria-label="Later">&rsaquo;</button></div></div>';
+}
+function dayCol(d){
+  var td=todayStr(), past=d<td, dd=dt(d);
+  var arr=past?doneOn(d):tasksForDay(d);
+  var name=d===td?"Today":d===addDays(1)?"Tomorrow":dd.toLocaleDateString(undefined,{weekday:"long"});
+  var h='<div class="dcol'+(d===td?" today":"")+'"'+(past?'':' data-drop="'+d+'"')+'><div class="dhead"><span>'+esc(name)+'</span><small>'+esc(shortDate(d))+(arr.length?' &middot; '+arr.length+(past?' done':''):'')+'</small></div>';
+  if(arr.length) h+='<ul class="list">'+arr.map(function(t){return taskRow(t,{hidePlan:true,drag:!past})}).join("")+'</ul>';
+  if(!past) h+=CAL.add===d?captureHtml("Add to "+dayWord(d)):'<button class="dadd" data-act="dayadd" data-v="'+d+'">+ Add</button>';
+  return h+'</div>';
+}
+function weekHtml(){
+  var h='<div class="week">';
+  for(var i=0;i<7;i++) h+=dayCol(addDays(7*CAL.week+i));
+  return h+'</div>';
+}
+function monthHtml(){
+  var b=monthBase(), y=b.getFullYear(), mo=b.getMonth(), lead=(b.getDay()+6)%7, n=new Date(y,mo+1,0).getDate();
+  var td=todayStr(), sel=CAL.sel||td;
+  var g='<div class="month">'+["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(function(w){return '<div class="dow">'+w+'</div>'}).join("");
+  for(var i=0;i<lead;i++) g+='<div class="mday blank"></div>';
+  for(var dn=1;dn<=n;dn++){
+    var d=y+"-"+pad(mo+1)+"-"+pad(dn), past=d<td;
+    var c=past?doneOn(d).length:tasksForDay(d).length;
+    var due=!past&&S.tasks.some(function(t){return !t.done&&t.due===d});
+    g+='<button class="mday'+(past?" past":"")+(d===td?" today":"")+(d===sel?" sel":"")+'" data-act="calpick" data-v="'+d+'"'+(past?'':' data-drop="'+d+'"')+
+      ' aria-label="'+esc(dt(d).toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"}))+(c?", "+c+(past?" done":" planned"):"")+(due?", something due":"")+'">'+
+      '<span>'+dn+'</span>'+(c?'<span class="n">'+(past?"&#10003;":"")+c+'</span>':'')+(due?'<i class="dd"></i>':'')+'</button>';
+  }
+  return '<div class="monthwrap">'+g+'</div><div>'+dayCol(sel)+'</div></div>';
+}
+function trayHtml(){
+  function grp(key,label,arr,drop,extra){
+    var open=CAL.tray[key];
+    var h='<div data-drop="'+drop+'"><button class="trayh" data-act="tray" data-v="'+key+'" aria-expanded="'+open+'">'+label+'<span>'+arr.length+(open?' &#9662;':' &#9656;')+'</span></button>';
+    if(open){
+      if(arr.length) h+='<ul class="list">'+arr.map(function(t){return taskRow(t,{drag:true})}).join("")+'</ul>';
+      h+=extra||"";
+    }
+    return h+'</div>';
+  }
+  var park=CAL.add==="later"?captureHtml("Park an idea"):'<button class="dadd" data-act="dayadd" data-v="later">+ Park an idea</button>';
+  return '<div class="section"><span>Not scheduled</span></div><div class="card tray">'+
+    grp("any","Anytime",listPullAll().filter(function(t){return !t.due}),"anytime")+grp("later","Later",listLater(),"later",park)+'</div>';
+}
+/* Moving a task by dragging it onto a day, or onto Anytime / Later. */
+function moveTask(id,to){
+  var t=task(id); if(!t) return;
+  var was={plan:t.plan,someday:t.someday,inbox:t.inbox};
+  if(to==="later"){ t.someday=true; t.plan=null; }
+  else if(to==="anytime"){ t.someday=false; t.plan=null; }
+  else { t.plan=to; t.someday=false; }
+  t.inbox=false;
+  if(t.plan===was.plan&&t.someday===was.someday&&t.inbox===was.inbox) return;
+  save(); render();
+  toast(to==="later"?"Moved to Later.":to==="anytime"?"Moved to Anytime.":"Moved to "+dayWord(to)+".",function(){
+    var x=task(id); if(!x) return; x.plan=was.plan; x.someday=was.someday; x.inbox=was.inbox; save(); render();
+  });
+}
+
+/* ---------- Inbox box: save lines to the Inbox, or let Claude sort a paragraph ---------- */
+function inboxBoxHtml(){
+  if(ASK.items.length) return reviewHtml();
+  var ai=aiReady();
+  return '<div class="newp"><textarea id="ask-in" style="min-height:92px" aria-label="What is on your mind" placeholder="'+
+      (ai?"What is on your mind? One thing per line, or a whole paragraph for Claude to sort.":"What is on your mind? One thing per line.")+'">'+esc(ASK.text)+'</textarea>'+
+    (ASK.err?'<div class="sub over" style="margin:0 2px">'+esc(ASK.err)+'</div>':'')+
+    '<div class="row"><span class="sub" style="margin:0 2px">'+(ai?"Enter saves to Inbox.":'Enter saves. <button class="linkbtn" style="padding:0;min-height:0;font-size:inherit" data-act="settings">Turn on Claude</button> to sort automatically.')+'</span>'+
+    (ASK.busy?'<span class="btns"><button class="btn ghost" data-act="askstop">Stop</button><button class="btn primary" disabled>Sorting...</button></span>'
+      :'<span class="btns">'+(ai?'<button class="btn" data-act="askgo"><span style="display:inline-flex;gap:6px;align-items:center">'+IC.spark.replace('width="20" height="20"','width="16" height="16"')+'Sort it out</span></button>':'')+
+        '<button class="btn primary" data-act="inboxsave">Save</button></span>')+
+    '</div></div>';
+}
+function inboxSave(){
+  var e=$("#ask-in"); if(!e) return;
+  var txt=e.value; if(!txt.trim()) return;
+  e.value=""; ASK.text=""; ASK.err="";
+  addFromText(txt);
+  var e2=$("#ask-in"); if(e2){ e2.value=""; e2.focus(); }
+}
 function captureHtml(ph,hint){
   return '<div class="capwrap"><div class="capture"><textarea id="cap" rows="1" placeholder="'+esc(ph)+'" aria-label="Add task"></textarea><button class="go" data-act="add" aria-label="Add">'+IC.plus+'</button></div>'+
     '<div class="hint">'+(hint||'One per line. End with <code>tomorrow</code> or <code>fri</code> to schedule. Also <code>#project</code> <code>@context</code> <code>~15</code>')+'</div></div>';
 }
 function head(title,sub,cls){
   return '<div class="head"><div><h1>'+esc(title)+'</h1>'+(sub?'<div class="sub '+(cls||"")+'">'+sub+'</div>':"")+'</div><div class="hbtns">'+
-    (aiReady()&&view!=="sort"?'<button class="icon-btn" data-act="ask" aria-label="Sort it out with Claude" title="Sort it out with Claude">'+IC.spark+'</button>':"")+
+    (aiReady()&&view!=="inbox"?'<button class="icon-btn" data-act="ask" aria-label="Sort it out with Claude" title="Sort it out with Claude">'+IC.spark+'</button>':"")+
     '<button class="icon-btn" data-act="settings" aria-label="Settings">'+IC.gear+'</button>'+
     '<button class="btn primary" data-act="focus">Focus</button></div></div>';
 }
 function renderRail(){
-  var counts={today:listToday().length,plan:tasksForDay(addDays(1)).length,inbox:listInbox().length,projects:null,later:listLater().length,done:null};
+  var counts={today:listToday().length,cal:null,inbox:listInbox().length,projects:null};
   $("#rail").innerHTML='<div class="brand">One<i>Thing</i></div>'+VIEWS.map(function(v){
-    var on=view===v[0]||(v[0]==="projects"&&view.indexOf("p:")===0);
-    var c=counts[v[0]], desk=(v[0]==="later"||v[0]==="done");
-    return '<button class="nav'+(desk?" desk":"")+(on?" on":"")+'" data-view="'+v[0]+'"><span>'+v[1]+'</span>'+(c?'<span class="badge">'+c+'</span>':"")+'</button>';
-  }).join("")+'<button class="nav more'+((view==="later"||view==="done")?" on":"")+'" data-act="more"><span>More</span></button>'+
+    var on=view===v[0]||(v[0]==="projects"&&view.indexOf("p:")===0)||(v[0]==="today"&&view==="done");
+    var c=counts[v[0]];
+    return '<button class="nav'+(on?" on":"")+'" data-view="'+v[0]+'"><span>'+v[1]+'</span>'+(c?'<span class="badge">'+c+'</span>':"")+'</button>';
+  }).join("")+
   '<div class="foot"><div>'+doneToday()+' done today</div><div id="sync" class="sync"></div><button class="linkbtn" style="text-align:left;padding:4px 0;min-height:0" data-act="settings">Settings</button></div>';
   renderSync();
 }
 function render(){
+  /* Old screen names still work: Plan and Later live in Calendar now, Sort lives in Inbox. */
+  if(view==="plan") view="cal";
+  if(view==="later"){ view="cal"; CAL.tray.later=true; }
+  if(view==="sort") view="inbox";
   renderRail();
   var m=$("#main"), h="";
+  m.className="main"+(view==="cal"?" wide":"");
   if(view==="today"){
     var td=listToday(), lim=S.settings.todayLimit, over=td.length>lim;
-    var tmr=tasksForDay(addDays(1)).length;
-    var banner=(new Date().getHours()>=15&&tmr===0)?'<div class="banner"><span>Tomorrow is empty.</span><button class="btn small ghost" data-act="plantomorrow">Plan it</button></div>':"";
+    var tmr=tasksForDay(addDays(1)).length, nIn=listInbox().length, nDone=doneToday();
+    var banner=nIn?'<div class="banner"><span>'+nIn+' in Inbox to sort</span><button class="btn small ghost" data-view="inbox">Open Inbox</button></div>'
+      :(new Date().getHours()>=15&&tmr===0)?'<div class="banner"><span>Tomorrow is empty.</span><button class="btn small ghost" data-act="plantomorrow">Plan it</button></div>':"";
     h=head("Today",td.length+" planned"+(over?" &middot; over your limit of "+lim:""),over?"over":"")+
       banner+captureHtml("Add to today")+
       listHtml(td,{hidePlan:true},"Nothing planned yet.")+pullHtml(todayStr())+
-      '<div style="margin-top:6px"><button class="linkbtn" data-act="plantomorrow">Plan tomorrow &rarr;</button></div>';
-  }else if(view==="plan"){
-    var strip='<div class="days" role="group" aria-label="Pick a day">';
-    for(var i=0;i<8;i++){
-      var d=addDays(i), c=tasksForDay(d).length, dd=dt(d);
-      strip+='<button class="day'+(d===planDay?" on":"")+'" data-day="'+d+'"><span>'+(i===0?"Today":i===1?"Tmrw":dd.toLocaleDateString(undefined,{weekday:"short"}))+'</span><b>'+dd.getDate()+'</b>'+(c?'<i></i>':"")+'</button>';
-    }
-    strip+='</div>';
-    var pd=tasksForDay(planDay);
-    h=head("Plan",esc(dayLabel(planDay))+" &middot; "+pd.length+" planned")+strip+captureHtml("Add to "+dayWord(planDay))+
-      listHtml(pd,{hidePlan:true},"Nothing set for this day.")+pullHtml(planDay);
+      '<div class="links"><button class="linkbtn" data-act="plantomorrow">See the week &rarr;</button>'+(nDone?'<button class="linkbtn" data-view="done">'+nDone+' done today &rarr;</button>':'')+'</div>';
+  }else if(view==="cal"){
+    h=head("Calendar",calSub())+calBar()+(CAL.mode==="month"?monthHtml():weekHtml())+trayHtml();
   }else if(view==="inbox"){
     var a=listInbox();
-    h=head("Inbox",a.length?a.length+" to sort":"")+captureHtml("What is on your mind?","One per line. Sort it later.")+listHtml(a,{triage:true},"Inbox is clear.");
+    h=head("Inbox",ASK.items.length?"Check what Claude found, then add it.":a.length?a.length+" to sort":"")+inboxBoxHtml()+
+      (ASK.items.length?"":listHtml(a,{triage:true},"Inbox is clear."));
   }else if(view==="projects"){
     var tp=BUILTIN.map(function(x,i){return '<button class="btn small" data-act="tpl" data-tpl="b'+i+'">'+esc(x.name)+'</button>'}).join("")+
       S.templates.map(function(x){return '<span class="btn small tpl"><button data-act="tpl" data-tpl="s'+x.id+'">'+esc(x.name)+'</button><button class="x" data-act="deltpl" data-tpl="'+x.id+'" aria-label="Delete template">&times;</button></span>'}).join("");
@@ -705,14 +865,9 @@ function render(){
       captureHtml("Add steps","One step per line. Paste a whole list if you have one.")+
       (open.length?'<ul class="list card">'+open.map(function(t){return taskRow(t,{reorder:true,hideProj:true,nextUp:t.id===firstId})}).join("")+'</ul>':'<div class="card"><div class="empty">No open steps.</div></div>')+
       (dn.length?'<div class="section"><span>Finished ('+dn.length+')</span></div><ul class="list card">'+dn.map(function(t){return taskRow(t,{hideProj:true})}).join("")+'</ul>':"");
-  }else if(view==="later"){
-    var l=listLater();
-    h=head("Later",l.length?l.length+" parked":"")+captureHtml("Park an idea")+listHtml(l,{},"Nothing parked.");
   }else if(view==="done"){
     var d2=listDone();
-    h=head("Done",doneToday()+" today")+listHtml(d2,{},"Nothing finished yet.");
-  }else if(view==="sort"){
-    h=head("Sort it out",ASK.items.length?"Check what Claude found, then add it.":"Describe it in your own words. Claude puts it in the right places.")+sortHtml();
+    h='<button class="linkbtn" data-view="today" style="padding-left:0">&larr; Today</button>'+head("Done",doneToday()+" today")+listHtml(d2,{},"Nothing finished yet.");
   }
   /* A redraw (for example from sync) must not eat what you are typing. */
   var ae=document.activeElement, keepId=ae&&(ae.id==="cap"||ae.id==="ask-in")?ae.id:null;
@@ -979,24 +1134,10 @@ function validDay(v){
   return null;
 }
 /* The Sort tab. Write freely, Claude splits it up, you check it, then it is added. */
-function renderAsk(){ if(view==="sort") render(); }
-function sortHtml(){
-  if(!aiReady()){
-    return '<div class="card"><div class="empty" style="text-align:left;padding:22px">'+
-      '<div style="color:var(--ink);font-weight:600;margin-bottom:6px">Turn on Claude to use this</div>'+
-      'Write a paragraph like "Pump skid job: pull the I/O list, build the AOI, commission Thursday. Call Matt Monday." and Claude turns it into projects, steps, and dates. '+
-      'It needs your Anthropic API key, and costs a few cents each time you tap Sort it out.'+
-      '<div style="margin-top:14px"><button class="btn primary" data-act="settings">Add key in Settings</button></div></div></div>';
-  }
+function renderAsk(){ if(view==="inbox") render(); }
+function reviewHtml(){
   var h='';
-  if(!ASK.items.length){
-    h+='<div class="newp"><textarea id="ask-in" style="min-height:170px" aria-label="What needs doing" placeholder="e.g. Pump skid job: pull the I/O list, build the AOI, test alarms, commission Thursday. Call Matt Monday about the truck. Order fittings.">'+esc(ASK.text)+'</textarea>'+
-      (ASK.err?'<div class="sub over" style="margin:0 2px">'+esc(ASK.err)+'</div>':'')+
-      '<div class="row"><span class="sub" style="margin:0 2px">Nothing is added until you check it.</span>'+
-      (ASK.busy?'<span class="btns"><button class="btn ghost" data-act="askstop">Stop</button><button class="btn primary" disabled>Sorting...</button></span>'
-               :'<span class="btns">'+(ASK.text?'<button class="btn ghost" data-act="askclear">Clear</button>':'')+'<button class="btn primary" data-act="askgo">Sort it out</button></span>')+
-      '</div></div>';
-  }else{
+  {
     var groups={}, order=[];
     ASK.items.forEach(function(it,i){ var k=it.proj||""; if(!groups[k]){groups[k]=[];order.push(k);} groups[k].push(i); });
     h+='<div class="card" style="padding:4px 16px 8px">';
@@ -1167,7 +1308,14 @@ document.addEventListener("click",function(ev){
     case "pull": if(t){ t.plan=a.getAttribute("data-day"); t.inbox=false; save(); render(); toast("Added for "+dayWord(t.plan)+"."); } break;
     case "togglepull": pullOpen=!pullOpen; render(); break;
     case "togglenewp": newOpen=!newOpen; render(); if(newOpen&&$("#newp")) $("#newp").focus(); break;
-    case "plantomorrow": planDay=addDays(1); view="plan"; render(); $("#main").scrollTop=0; break;
+    case "plantomorrow": view="cal"; CAL.mode="week"; CAL.week=0; render(); $("#main").scrollTop=0; break;
+    case "calmode": CAL.mode=a.getAttribute("data-v"); CAL.add=null; render(); break;
+    case "calstep": var stp=+a.getAttribute("data-v"); if(CAL.mode==="month") CAL.month+=stp; else CAL.week+=stp; CAL.add=null; render(); break;
+    case "calnow": CAL.week=0; CAL.month=0; CAL.sel=null; CAL.add=null; render(); break;
+    case "calpick": CAL.sel=a.getAttribute("data-v"); CAL.add=null; render(); break;
+    case "dayadd": CAL.add=a.getAttribute("data-v"); if(CAL.add==="later") CAL.tray.later=true; render(); var dc=$("#cap"); if(dc) dc.focus(); break;
+    case "tray": var tk=a.getAttribute("data-v"); CAL.tray[tk]=!CAL.tray[tk]; render(); break;
+    case "inboxsave": inboxSave(); break;
     case "add": var c=$("#cap"); if(c&&addFromText(c.value)){ var c1=$("#cap"); if(c1){ c1.value=""; c1.style.height=""; c1.focus(); } } break;
     case "up": move(id,-1); break;
     case "down": move(id,1); break;
@@ -1224,7 +1372,7 @@ document.addEventListener("click",function(ev){
     case "ghconnect": ghConnect($("#gh-token").value); break;
     case "ghsync": ghSync(); refreshSyncBox(); break;
     case "ghoff": GH.cfg=null; GH.status=""; GH.err=""; ghStore(); renderSync(); refreshSyncBox(); toast("Sync is off on this device. Your tasks stay here."); break;
-    case "ask": view="sort"; render(); $("#main").scrollTop=0; break;
+    case "ask": view="inbox"; render(); $("#main").scrollTop=0; var ai2=$("#ask-in"); if(ai2) ai2.focus(); break;
     case "askgo": askGo(); break;
     case "askstop": abortAsk(); ASK.busy=false; renderAsk(); break;
     case "askback": ASK.items=[]; ASK.err=""; renderAsk(); break;
@@ -1263,10 +1411,40 @@ document.addEventListener("change",function(ev){
 document.addEventListener("keydown",function(ev){
   if(ev.target.id==="cap"&&ev.key==="Enter"&&!ev.shiftKey){
     ev.preventDefault(); var c=ev.target; if(addFromText(c.value)){ var c2=$("#cap"); if(c2){ c2.value=""; c2.style.height=""; c2.focus(); } }
-  }else if(ev.target.id==="smallin"&&ev.key==="Enter"){ ev.preventDefault(); var b2=document.querySelector('[data-act="fsmalladd"]'); if(b2) b2.click(); }
-  else if(ev.key==="Escape"){ if($("#veil").classList.contains("show")) closeSheet(); else if($("#focus").classList.contains("show")) closeFocus(); }
-  else if(ev.key==="n"&&!/INPUT|TEXTAREA|SELECT/.test(ev.target.tagName)&&$("#cap")&&!$("#veil").classList.contains("show")){ ev.preventDefault(); $("#cap").focus(); }
+  }else if(ev.target.id==="ask-in"&&ev.key==="Enter"&&!ev.shiftKey&&!ev.isComposing){ ev.preventDefault(); inboxSave(); }
+  else if(ev.target.id==="smallin"&&ev.key==="Enter"){ ev.preventDefault(); var b2=document.querySelector('[data-act="fsmalladd"]'); if(b2) b2.click(); }
+  else if(ev.key==="Escape"){
+    if($("#veil").classList.contains("show")) closeSheet();
+    else if($("#focus").classList.contains("show")) closeFocus();
+    else if(view==="cal"&&CAL.add){ CAL.add=null; render(); }
+  }
+  else if(ev.key==="n"&&!/INPUT|TEXTAREA|SELECT/.test(ev.target.tagName)&&!$("#veil").classList.contains("show")){
+    var box=$("#cap")||$("#ask-in"); if(box){ ev.preventDefault(); box.focus(); }
+  }
 });
+/* Drag a task onto a day (or Anytime / Later) in Calendar. Mouse, trackpad, and iPad touch-and-hold. */
+var dragId=null;
+document.addEventListener("dragstart",function(ev){
+  var li=ev.target.closest&&ev.target.closest('li.task[draggable="true"]'); if(!li) return;
+  dragId=li.getAttribute("data-id");
+  try{ ev.dataTransfer.setData("text/plain",dragId); ev.dataTransfer.effectAllowed="move"; }catch(e){}
+});
+document.addEventListener("dragover",function(ev){
+  var z=dragId&&ev.target.closest&&ev.target.closest("[data-drop]"); if(!z) return;
+  ev.preventDefault();
+  document.querySelectorAll(".over-drop").forEach(function(x){ if(x!==z) x.classList.remove("over-drop"); });
+  z.classList.add("over-drop");
+});
+document.addEventListener("dragleave",function(ev){
+  var z=ev.target.closest&&ev.target.closest("[data-drop]");
+  if(z&&!z.contains(ev.relatedTarget)) z.classList.remove("over-drop");
+});
+document.addEventListener("drop",function(ev){
+  var z=dragId&&ev.target.closest&&ev.target.closest("[data-drop]"); if(!z) return;
+  ev.preventDefault(); var id=dragId; dragId=null;
+  moveTask(id,z.getAttribute("data-drop"));
+});
+document.addEventListener("dragend",function(){ dragId=null; document.querySelectorAll(".over-drop").forEach(function(x){x.classList.remove("over-drop")}); });
 /* Capture hint: shown while the box has focus. When focus leaves because of a press elsewhere,
    hide it only after that press finishes, so the list does not jump up under the pointer mid-click. */
 var pressing=false, hintHide=false;
