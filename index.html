@@ -209,9 +209,21 @@ li.task[draggable="true"]{cursor:grab}
 .mday.past{color:var(--muted);font-weight:500}
 .mday.today{color:var(--accent)}
 .mday.sel{background:var(--ink);color:var(--bg)}
-.mday .n{font-size:11px;font-weight:600;color:var(--muted);line-height:1}
-.mday.sel .n{color:var(--bg)}
-.mday .dd{position:absolute;top:6px;right:7px;width:6px;height:6px;border-radius:50%;background:var(--warn)}
+/* In a month cell the only number is the date. Tasks are dots, due is an amber dot, done days get a check. */
+.mdots{display:flex;gap:3px;align-items:center;height:8px}
+.mdots i{width:6px;height:6px;border-radius:50%;background:var(--accent)}
+.mdots i.due,.mlegend i.due{width:8px;height:8px;background:transparent;border:2px solid var(--warn);box-sizing:border-box}
+.mday.sel .mdots i.due{border-color:var(--warn)}
+.mdots b{font-size:10px;line-height:1;font-weight:700;color:var(--muted)}
+.mday .ok{font-size:12px;line-height:8px;color:var(--ok);font-weight:700}
+.mday.sel .mdots i:not(.due){background:var(--bg)}
+.mday.sel .mdots b,.mday.sel .ok{color:var(--bg)}
+.mlegend{grid-column:1/-1;display:flex;gap:16px;justify-content:center;font-size:12px;color:var(--muted);padding:8px 0 2px}
+.mlegend span{display:inline-flex;align-items:center;gap:6px}
+.mlegend i{width:6px;height:6px;border-radius:50%;background:var(--accent);display:inline-block}
+.mlegend .ok{color:var(--ok);font-weight:700}
+.cnt{font-size:12px;font-weight:600;color:var(--muted);background:var(--soft);border-radius:99px;padding:2px 9px;white-space:nowrap;font-style:normal}
+.dhead .dname small{margin-left:8px}
 .trayh{display:flex;justify-content:space-between;align-items:center;width:100%;padding:14px 16px;font-weight:600;border-top:1px solid var(--line);min-height:50px;text-align:left}
 .trayh:first-child{border-top:0}
 .trayh span{color:var(--muted);font-weight:500;font-size:14px}
@@ -712,7 +724,8 @@ function monthBase(){ var b=new Date(); b.setHours(12,0,0,0); b.setDate(1); b.se
 function calSub(){
   if(CAL.mode==="month") return esc(monthBase().toLocaleDateString(undefined,{month:"long",year:"numeric"}));
   var s=addDays(7*CAL.week), e=addDays(7*CAL.week+6);
-  return (CAL.week===0?"Next 7 days &middot; ":"")+esc(shortDate(s))+" &ndash; "+esc(shortDate(e));
+  var end=s.slice(0,7)===e.slice(0,7)?String(+e.slice(8)):shortDate(e);   /* "Nov 3 – 9", or "Nov 28 – Dec 4" */
+  return (CAL.week===0?"Next 7 days &middot; ":"")+'<span style="white-space:nowrap">'+esc(shortDate(s))+" &ndash; "+esc(end)+'</span>';
 }
 function calBar(){
   var away=CAL.mode==="month"?CAL.month!==0:CAL.week!==0;
@@ -727,7 +740,8 @@ function dayCol(d){
   var td=todayStr(), past=d<td, dd=dt(d);
   var arr=past?doneOn(d):tasksForDay(d);
   var name=d===td?"Today":d===addDays(1)?"Tomorrow":dd.toLocaleDateString(undefined,{weekday:"long"});
-  var h='<div class="dcol'+(d===td?" today":"")+'"'+(past?'':' data-drop="'+d+'"')+'><div class="dhead"><span>'+esc(name)+'</span><small>'+esc(shortDate(d))+(arr.length?' &middot; '+arr.length+(past?' done':''):'')+'</small></div>';
+  var n=arr.length, cnt=n?'<em class="cnt">'+n+' '+(past?"done":n===1?"task":"tasks")+'</em>':'';
+  var h='<div class="dcol'+(d===td?" today":"")+'"'+(past?'':' data-drop="'+d+'"')+'><div class="dhead"><div class="dname"><span>'+esc(name)+'</span><small>'+esc(shortDate(d))+'</small></div>'+cnt+'</div>';
   if(arr.length) h+='<ul class="list">'+arr.map(function(t){return taskRow(t,{hidePlan:true,drag:!past})}).join("")+'</ul>';
   if(!past) h+=CAL.add===d?captureHtml("Add to "+dayWord(d)):'<button class="dadd" data-act="dayadd" data-v="'+d+'">+ Add</button>';
   return h+'</div>';
@@ -746,10 +760,18 @@ function monthHtml(){
     var d=y+"-"+pad(mo+1)+"-"+pad(dn), past=d<td;
     var c=past?doneOn(d).length:tasksForDay(d).length;
     var due=!past&&S.tasks.some(function(t){return !t.done&&t.due===d});
-    g+='<button class="mday'+(past?" past":"")+(d===td?" today":"")+(d===sel?" sel":"")+'" data-act="calpick" data-v="'+d+'"'+(past?'':' data-drop="'+d+'"')+
-      ' aria-label="'+esc(dt(d).toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"}))+(c?", "+c+(past?" done":" planned"):"")+(due?", something due":"")+'">'+
-      '<span>'+dn+'</span>'+(c?'<span class="n">'+(past?"&#10003;":"")+c+'</span>':'')+(due?'<i class="dd"></i>':'')+'</button>';
+    var marks='';
+    if(past){ if(c) marks='<span class="ok" aria-hidden="true">&#10003;</span>'; }
+    else if(c||due){
+      var dots=(due?'<i class="due"></i>':'');
+      for(var j=0;j<Math.min(c-(due?1:0),due?2:3);j++) dots+='<i></i>';
+      marks='<span class="mdots" aria-hidden="true">'+dots+(c>3?'<b>+</b>':'')+'</span>';
+    }
+    g+='<button class="mday'+(past?" past":"")+(d===td?" today":"")+(d===sel?" sel":"")+'" data-act="calpick" data-v="'+d+'" data-count="'+c+'"'+(past?'':' data-drop="'+d+'"')+
+      ' aria-label="'+esc(dt(d).toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"}))+(c?", "+c+(past?" done":c===1?" task":" tasks"):"")+(due?", something due":"")+'">'+
+      '<span>'+dn+'</span>'+marks+'</button>';
   }
+  g+='<div class="mlegend" aria-hidden="true"><span><i></i>task</span><span><i class="due"></i>due</span><span><b class="ok">&#10003;</b>done</span></div>';
   return '<div class="monthwrap">'+g+'</div><div>'+dayCol(sel)+'</div></div>';
 }
 function trayHtml(){

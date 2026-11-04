@@ -66,6 +66,8 @@ for (const width of [390, 1280]) {
     const d = await load(page);
     await page.locator('.nav[data-view="cal"]').first().click();
     await expect(page.locator(".week .dcol")).toHaveCount(7);
+    await expect(page.locator(".week .dcol").nth(0).locator(".cnt")).toHaveText("1 task");
+    await expect(page.locator(".week .dcol").nth(2).locator(".cnt")).toHaveCount(0); // empty day: no count at all
     await expect(page.locator(".week .dcol").nth(0)).toContainText("Today job");
     await expect(page.locator(".week .dcol").nth(1)).toContainText("Tomorrow job");
     await expect(page.locator(".week .dcol").nth(3)).toContainText("Due Friday-ish");
@@ -107,8 +109,14 @@ test("month shows counts, deadlines, finished days, and the picked day", async (
   await page.locator('.nav[data-view="cal"]').first().click();
   await page.locator('[data-act="calmode"][data-v="month"]').click();
   const cell = (day) => page.locator(`.mday[data-v="${day}"]`);
-  if (await cell(d.d1).count()) await expect(cell(d.d1).locator(".n")).toHaveText("1");
-  if (await cell(d.d3).count()) await expect(cell(d.d3).locator(".dd")).toHaveCount(1);
+  // The only number in a cell is the date: tasks are dots, due is an amber dot.
+  if (await cell(d.d1).count()) {
+    await expect(cell(d.d1)).toHaveText(String(+d.d1.slice(8)));
+    await expect(cell(d.d1).locator(".mdots i")).toHaveCount(1);
+    await expect(cell(d.d1)).toHaveAttribute("aria-label", /1 task/);
+  }
+  if (await cell(d.d3).count()) await expect(cell(d.d3).locator(".mdots i.due")).toHaveCount(1);
+  await expect(page.locator(".mlegend")).toContainText("due");
   await expect(cell(d.today)).toHaveClass(/sel/);
   if (await cell(d.d1).count()) {
     await cell(d.d1).click();
