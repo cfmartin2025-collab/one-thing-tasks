@@ -1,13 +1,26 @@
 // Offline support. The app page is network-first so updates show up on next open;
 // everything else (icons, fonts) is cache-first.
-var CACHE = "onething-v2";
+var CACHE = "onething-v3";
 
-// Tapping a reminder opens (or brings forward) the app.
+// A push from the One Thing server (server/): { title, body, tag, url }, encrypted in transit.
+self.addEventListener("push", function (e) {
+  var d = {};
+  try { d = e.data ? e.data.json() : {}; } catch (x) { d = { body: e.data ? e.data.text() : "" }; }
+  e.waitUntil(self.registration.showNotification(d.title || "One Thing", {
+    body: d.body || "", tag: d.tag || undefined, icon: "icons/icon-192.png", badge: "icons/icon-192.png",
+    data: { url: d.url || "./" },
+  }));
+});
+
+// Tapping a notification opens (or brings forward) the app, at the place it points to.
 self.addEventListener("notificationclick", function (e) {
   e.notification.close();
+  var url = (e.notification.data && e.notification.data.url) || "./";
   e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (cs) {
-    for (var i = 0; i < cs.length; i++) { if ("focus" in cs[i]) return cs[i].focus(); }
-    return self.clients.openWindow("./");
+    for (var i = 0; i < cs.length; i++) {
+      if ("focus" in cs[i]) { cs[i].postMessage({ open: url }); return cs[i].focus(); }
+    }
+    return self.clients.openWindow(url);
   }));
 });
 var SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/apple-touch-icon.png"];

@@ -52,8 +52,9 @@ test("four tabs, old screen names still land somewhere sensible", async ({ page 
 test("Today links to the Inbox, the week, and what you finished", async ({ page }) => {
   await load(page);
   await page.evaluate(() => { window.__app.state.tasks.push({ id: "in1", title: "Unsorted", notes: "", project: null, tags: [], energy: null, due: null, defer: null, est: null, plan: null, someday: false, done: false, doneAt: null, inbox: true, created: 1, order: 1, mod: 1 }); window.__app.render(); });
-  await expect(page.locator(".banner")).toContainText("1 in Inbox to sort");
-  await page.locator(".banner [data-view=inbox]").click();
+  const inboxLine = page.locator(".banner", { hasText: "in Inbox to sort" });
+  await expect(inboxLine).toContainText("1 in Inbox to sort");
+  await inboxLine.locator("[data-view=inbox]").click();
   await expect(page.locator("h1")).toHaveText("Inbox");
   await page.locator('.nav[data-view="today"]').first().click();
   await page.locator('[data-act="plantomorrow"]').click();

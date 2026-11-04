@@ -243,6 +243,8 @@ li.task[draggable="true"]{cursor:grab}
 .trayh span{color:var(--muted);font-weight:500;font-size:14px}
 .trayh:hover{background:var(--soft)}
 .links{display:flex;gap:4px 16px;flex-wrap:wrap;margin-top:6px}
+.banner.wrap{flex-wrap:wrap;color:var(--ink);border-color:var(--accent);padding:10px 10px 10px 16px}
+.banner.wrap .btns{margin-left:auto}
 .tray .list>li:first-child{border-top:1px solid var(--line)}
 .tray .capwrap{margin:0;border-top:1px solid var(--line)}
 .tray .capture{border:0;border-radius:0}
@@ -791,6 +793,25 @@ function earlierHtml(){
   var e=earlierList(); if(!e.length) return "";
   return '<div class="card earlier" style="margin-bottom:12px">'+earlierHead(e.length)+'<ul class="list">'+e.map(function(t){return taskRow(t,{hidePlan:false})}).join("")+'</ul></div>';
 }
+/* End of day: after the evening hour (or when the 5 PM alert is tapped), offer to move what is
+   still open to tomorrow in one tap. "Keep" hides it until tomorrow. */
+var WRAP={force:false}, WRAPKEY="onething.wrapkept";
+function wrapDue(){
+  if(!listToday().length) return false;
+  var kept=null; try{ kept=localStorage.getItem(WRAPKEY); }catch(e){}
+  if(kept===todayStr()) return false;
+  var eh=S.settings&&Number.isInteger(S.settings.eveningHour)?S.settings.eveningHour:17;
+  return WRAP.force||new Date().getHours()>=eh;
+}
+function wrapToTomorrow(){
+  var open=listToday(); if(!open.length) return;
+  var tmr=addDays(1), was=open.map(function(t){return {id:t.id,plan:t.plan}});
+  open.forEach(function(t){ t.plan=tmr; });
+  WRAP.force=false; save(); render();
+  toast("Moved "+open.length+" to tomorrow. Rest well.",function(){
+    was.forEach(function(w){ var x=task(w.id); if(x) x.plan=w.plan; }); save(); render();
+  });
+}
 function doAllToday(){
   var e=earlierList(); if(!e.length) return;
   var was=e.map(function(t){return {id:t.id,plan:t.plan}}), td=todayStr();
@@ -833,9 +854,58 @@ function checkReminders(){
   if(!fired.length) return;
   notiSave(sent);
   fired.forEach(function(f){
+    /* With closed-app alerts on, the server already sends the system notification. */
+    if(pushOnHere()){ if(document.visibilityState==="visible") toast((f.why==="Due today"?"Due today: ":"⏰ ")+f.t.title); return; }
     if(!notifyOS(f.why==="Due today"?"Due today":"One Thing",f.t.title,f.t.id)) toast((f.why==="Due today"?"Due today: ":"⏰ ")+f.t.title);
   });
   if(document.visibilityState==="visible"&&fired.length) render();
+}
+/* Alerts when the app is closed: the push server (server/ in the repo) sends them.
+   PUSH_URL is set after the server is deployed; until then none of this shows.
+   A device signs up with the GitHub token it already uses for sync. */
+var PUSH_URL="", PUSHKEY="onething.push";
+function pushUrl(){ try{ return localStorage.getItem("onething.pushurl")||PUSH_URL; }catch(e){ return PUSH_URL; } }
+function pushOnHere(){ try{ return !!localStorage.getItem(PUSHKEY); }catch(e){ return false; } }
+function pushCapable(){ return !!(pushUrl()&&"serviceWorker" in navigator&&"PushManager" in window&&!window.claude); }
+function u8key(b64){ var s=atob(b64.replace(/-/g,"+").replace(/_/g,"/")+"===".slice((b64.length+3)%4)), a=new Uint8Array(s.length); for(var i=0;i<s.length;i++) a[i]=s.charCodeAt(i); return a; }
+var PUSHST={busy:false,err:""};
+function pushOn(){
+  if(!pushCapable()||!GH.cfg||PUSHST.busy) return Promise.resolve();
+  PUSHST={busy:true,err:""}; refreshNotiBox();
+  var base=pushUrl().replace(/\/$/,"");
+  return navigator.serviceWorker.ready.then(function(reg){
+    return fetch(base+"/vapid").then(function(r){return r.json()}).then(function(v){
+      return reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:u8key(v.publicKey)});
+    });
+  }).then(function(sub){
+    var tz="UTC"; try{ tz=Intl.DateTimeFormat().resolvedOptions().timeZone||"UTC"; }catch(e){}
+    return fetch(base+"/subscribe",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({subscription:sub.toJSON?sub.toJSON():sub,tz:tz,token:GH.cfg.token})}).then(function(r){
+      if(!r.ok) return r.json().catch(function(){return {}}).then(function(j){ throw {msg:j.error||"The alert server said no ("+r.status+")."}; });
+      try{ localStorage.setItem(PUSHKEY,JSON.stringify({endpoint:sub.endpoint,at:Date.now()})); }catch(e){}
+      toast("Alerts are on, even with the app closed.");
+    });
+  }).catch(function(e){ PUSHST.err=(e&&e.msg)||"Could not turn on alerts. Try again in a minute."; })
+  .then(function(){ PUSHST.busy=false; refreshNotiBox(); });
+}
+function pushOff(){
+  if(!("serviceWorker" in navigator)) return;
+  var base=pushUrl().replace(/\/$/,"");
+  navigator.serviceWorker.ready.then(function(reg){ return reg.pushManager.getSubscription(); }).then(function(sub){
+    if(!sub) return;
+    return fetch(base+"/unsubscribe",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({endpoint:sub.endpoint,token:GH.cfg&&GH.cfg.token})})
+      .catch(function(){}).then(function(){ return sub.unsubscribe(); });
+  }).catch(function(){}).then(function(){
+    try{ localStorage.removeItem(PUSHKEY); }catch(e){}
+    refreshNotiBox(); toast("Closed-app alerts are off on this device.");
+  });
+}
+function pushRowHtml(st){
+  if(!pushCapable()||st!=="granted") return "";
+  if(!GH.cfg) return '<span>Turn on Sync below to also get alerts when the app is closed.</span>';
+  if(pushOnHere()) return '<span><b>Alerts with the app closed: on.</b> Reminders, a morning summary at 8, and an end-of-day check at 5.</span><div class="btns"><button class="btn small ghost" data-act="pushoff">Turn off on this device</button></div>';
+  return '<div class="btns"><button class="btn" data-act="pushon"'+(PUSHST.busy?" disabled":"")+'>'+(PUSHST.busy?"Turning on...":"Get alerts when the app is closed")+'</button></div>'+
+    (PUSHST.err?'<span style="color:var(--bad)">'+esc(PUSHST.err)+'</span>':'');
 }
 function notiState(){
   if(!("Notification" in window)) return (navigator.standalone===false||!window.matchMedia("(display-mode: standalone)").matches)?"install":"none";
@@ -849,7 +919,8 @@ function notiBoxHtml(){
   else if(st==="install") h+='<span>To get notifications on iPhone or iPad, open One Thing from its home-screen icon, then come back here.</span>';
   else if(st==="none") h+='<span>This browser cannot show notifications. Reminders show inside the app instead.</span>';
   else h+='<span>Type "in 45 mins" or "at 3pm" on a task and it reminds you. Allow notifications so they pop up.</span><div class="btns"><button class="btn" data-act="notion">Allow notifications</button></div>';
-  return h+'<span>For now, reminders arrive while the app is open or was just used. Alerts with the app fully closed are coming next.</span></div>';
+  var row=pushRowHtml(st);
+  return h+(row||(pushCapable()?'':'<span>For now, reminders arrive while the app is open or was just used. Alerts with the app fully closed are coming next.</span>'))+'</div>';
 }
 function refreshNotiBox(){ var b=$("#notibox"); if(b) b.outerHTML=notiBoxHtml().replace(/^[\s\S]*?(<div id="notibox")/,"$1"); }
 
@@ -1001,8 +1072,9 @@ function render(){
   if(view==="today"){
     var td=listToday(), lim=S.settings.todayLimit, over=td.length>lim;
     var tmr=tasksForDay(addDays(1)).length, nIn=listInbox().length, nDone=doneToday();
-    var banner=nIn?'<div class="banner"><span>'+nIn+' in Inbox to sort</span><button class="btn small ghost" data-view="inbox">Open Inbox</button></div>'
-      :(new Date().getHours()>=15&&tmr===0)?'<div class="banner"><span>Tomorrow is empty.</span><button class="btn small ghost" data-act="plantomorrow">Plan it</button></div>':"";
+    var wrapB=wrapDue()?'<div class="banner wrap"><span><b>End of day</b> &middot; '+td.length+' still open</span><span class="btns"><button class="btn small ghost" data-act="wrapkeep">Keep</button><button class="btn small primary" data-act="wraptomorrow">Move to tomorrow</button></span></div>':'';
+    var banner=wrapB+(nIn?'<div class="banner"><span>'+nIn+' in Inbox to sort</span><button class="btn small ghost" data-view="inbox">Open Inbox</button></div>'
+      :(!wrapB&&new Date().getHours()>=15&&tmr===0)?'<div class="banner"><span>Tomorrow is empty.</span><button class="btn small ghost" data-act="plantomorrow">Plan it</button></div>':"");
     h=head("Today",td.length+" planned"+(over?" &middot; over your limit of "+lim:""),over?"over":"")+
       banner+captureHtml("Add to today")+
       earlierHtml()+listHtml(td.filter(function(t){return !isLeftover(t)}),{hidePlan:true},earlierList().length?"Nothing else planned for today.":"Nothing planned yet.")+pullHtml(todayStr())+
@@ -1490,9 +1562,18 @@ document.addEventListener("click",function(ev){
     case "tray": var tk=a.getAttribute("data-v"); CAL.tray[tk]=!CAL.tray[tk]; render(); break;
     case "inboxsave": inboxSave(); break;
     case "doalltoday": doAllToday(); break;
+    case "wraptomorrow": wrapToTomorrow(); break;
+    case "wrapkeep": try{ localStorage.setItem(WRAPKEY,todayStr()); }catch(e){} WRAP.force=false; render(); break;
     case "notion":
-      try{ Notification.requestPermission().then(function(p){ refreshNotiBox(); if(p==="granted"){ notifyOS("One Thing","Notifications are on.","hello"); toast("Notifications are on."); } }); }catch(e){ refreshNotiBox(); }
+      try{ Notification.requestPermission().then(function(p){
+        refreshNotiBox();
+        if(p!=="granted") return;
+        if(pushCapable()&&GH.cfg) pushOn();   /* one tap: allow, and closed-app alerts come with it */
+        else { notifyOS("One Thing","Notifications are on.","hello"); toast("Notifications are on."); }
+      }); }catch(e){ refreshNotiBox(); }
       break;
+    case "pushon": pushOn(); break;
+    case "pushoff": pushOff(); break;
     case "add": var c=$("#cap"); if(c&&addFromText(c.value)){ var c1=$("#cap"); if(c1){ c1.value=""; c1.style.height=""; c1.focus(); } } break;
     case "up": move(id,-1); break;
     case "down": move(id,1); break;
@@ -1637,6 +1718,15 @@ document.addEventListener("input",function(ev){
   if(ev.target.id==="ask-in") ASK.text=ev.target.value;
 });
 
+/* Opened from the 5 PM alert (./?wrap=1): show Today with the end-of-day offer. */
+try{
+  if(/[?&]wrap=1\b/.test(location.search)){ WRAP.force=true; view="today"; history.replaceState(null,"",location.pathname); }
+  if(navigator.serviceWorker) navigator.serviceWorker.addEventListener("message",function(ev){
+    var u=ev.data&&ev.data.open; if(!u) return;
+    if(/wrap=1/.test(u)){ WRAP.force=true; view="today"; }
+    render();
+  });
+}catch(e){}
 ghLoad();
 aiLoad();
 if(window.claude){ GH.cfg=null; AI.key=null; }   /* inside claude.ai the db and sample capabilities are used instead */

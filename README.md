@@ -48,7 +48,18 @@ or `by` sets the deadline instead of the do-date. Keep as text undoes any of it.
 - Fires while the app is open (checked every 20 s and on reopen), as a system notification if allowed
   (Settings → Reminders), otherwise as an in-app message. Each device remembers what it already showed
   (`onething.notified`).
-- Not yet: alerts while the app is fully closed. That needs Web Push from a small server.
+- End of day: after 17:00 (or `settings.eveningHour`), Today offers to move everything still open to
+  tomorrow in one tap (Undo), or Keep, which hides the offer until tomorrow.
+
+## Push server (alerts with the app closed, Siri capture)
+
+`server/` is a Cloudflare Worker: every minute it reads `data.json` and sends reminders, "Due today"
+(9:00), a morning summary (8:00), and an end-of-day check (17:00, opens `./?wrap=1`), each once.
+`POST /capture` adds tasks from a Siri Shortcut. Devices sign up with their sync token.
+Tests: `cd server; node --test test/`.
+
+Deploy (first time): `cd server; npx wrangler@4 login`, then `powershell -File tools/deploy-push.ps1`.
+Put the printed URL in `PUSH_URL` in index.html. Until then the app hides closed-app alerts.
 
 ## Sort it out (Claude)
 
