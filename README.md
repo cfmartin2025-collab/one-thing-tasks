@@ -36,6 +36,20 @@ The token is kept in that device's localStorage (`onething.sync`), never in the 
   and when the connection returns.
 - A device's own example tasks are not uploaded when it joins.
 
+## Reminders
+
+Quick-add reads a time from the end of a line: `in 45 mins`, `in an hour`, `in half an hour`, `in 2 hrs`,
+`at 3pm`, `9:30am`, `at 3` (afternoon), combined with a day (`tomorrow at 9`, `fri at 2:30pm`).
+Days also accept `in a few days` (3), `in a couple days` (2), `in a week`. A day after `due`, `is due`,
+or `by` sets the deadline instead of the do-date. Keep as text undoes any of it.
+
+- Stored per task as `remind` (epoch ms). Data version 3; `norm()` adds `remind: null` to older data.
+- Anything due today gets one heads-up at 9:00. Finished tasks never fire.
+- Fires while the app is open (checked every 20 s and on reopen), as a system notification if allowed
+  (Settings → Reminders), otherwise as an in-app message. Each device remembers what it already showed
+  (`onething.notified`).
+- Not yet: alerts while the app is fully closed. That needs Web Push from a small server.
+
 ## Sort it out (Claude)
 
 The **Sort** tab turns a paragraph into projects, ordered steps, do-dates, deadlines, and loose

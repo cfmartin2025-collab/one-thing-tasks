@@ -1,6 +1,15 @@
 // Offline support. The app page is network-first so updates show up on next open;
 // everything else (icons, fonts) is cache-first.
-var CACHE = "onething-v1";
+var CACHE = "onething-v2";
+
+// Tapping a reminder opens (or brings forward) the app.
+self.addEventListener("notificationclick", function (e) {
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (cs) {
+    for (var i = 0; i < cs.length; i++) { if ("focus" in cs[i]) return cs[i].focus(); }
+    return self.clients.openWindow("./");
+  }));
+});
 var SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/apple-touch-icon.png"];
 
 self.addEventListener("install", function (e) {

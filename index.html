@@ -233,6 +233,8 @@ li.task[draggable="true"]{cursor:grab}
 .dsub button:hover{border-color:var(--line2)}
 .earlier .list>li:first-child{border-top:1px solid var(--line)}
 .meta .carry{color:var(--bad)}
+.meta .rem{color:var(--accent);font-weight:600}
+.meta .rem.past{color:var(--muted);font-weight:500}
 .dcol.past .dhead span{color:var(--muted)}
 .cnt{font-size:12px;font-weight:600;color:var(--muted);background:var(--soft);border-radius:99px;padding:2px 9px;white-space:nowrap;font-style:normal}
 .dhead .dname small{margin-left:8px;white-space:nowrap}
@@ -309,6 +311,15 @@ function dayLabel(d){
   if(d===todayStr()) return "Today"; if(d===addDays(1)) return "Tomorrow";
   return dt(d).toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"});
 }
+/* "at 3:45 PM", "tomorrow at 9:00 AM", "Fri, Nov 6 at 9:00 AM" */
+function clock(ms){ return new Date(ms).toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"}); }
+function remindLabel(ms){
+  var d=ymd(new Date(ms)), t=clock(ms);
+  if(d===todayStr()) return "at "+t;
+  if(d===addDays(1)) return "tomorrow at "+t;
+  return dayLabel(d)+" at "+t;
+}
+function localInput(ms){ var d=new Date(ms); return ymd(d)+"T"+pad(d.getHours())+":"+pad(d.getMinutes()); }
 /* For use mid-sentence: "today", "tomorrow", but "Sat, Nov 7" keeps its capitals. */
 function dayWord(d){ var l=dayLabel(d); return (l==="Today"||l==="Tomorrow")?l.toLowerCase():l; }
 var IC={
@@ -339,6 +350,7 @@ function norm(r){
     if(t.plan===undefined){ t.plan=t.today?todayStr():null; }
     delete t.today;
     if(t.mod===undefined) t.mod=t.doneAt||t.created||0;   /* v2: per-item change time for sync merges */
+    if(t.remind===undefined) t.remind=null;              /* v3: reminder time (epoch ms) or null */
   });
   r.projects.forEach(function(p){ if(p.mod===undefined) p.mod=0; });
   r.templates.forEach(function(p){ if(p.mod===undefined) p.mod=0; });
@@ -560,7 +572,7 @@ function initSync(){
 }
 function mkTask(o){
   var n=Date.now();
-  return Object.assign({id:uid(),title:"",notes:"",project:null,tags:[],energy:null,due:null,defer:null,est:null,plan:null,someday:false,done:false,doneAt:null,inbox:false,created:n,order:n},o);
+  return Object.assign({id:uid(),title:"",notes:"",project:null,tags:[],energy:null,due:null,defer:null,est:null,plan:null,remind:null,someday:false,done:false,doneAt:null,inbox:false,created:n,order:n},o);
 }
 function seed(){
   var p={id:uid(),name:"Example: Pump skid upgrade",sequential:true,ex:true};
@@ -619,18 +631,49 @@ function dueLabel(d){
 
 /* ---------- quick capture ---------- */
 var DOW={sun:0,sunday:0,mon:1,monday:1,tue:2,tues:2,tuesday:2,wed:3,weds:3,wednesday:3,thu:4,thur:4,thurs:4,thursday:4,fri:5,friday:5,sat:6,saturday:6};
+/* Reads a trailing "when" from a task line, in this order:
+   1. a relative time: "in 45 mins", "in an hour", "in half an hour", "in 2 hrs"  -> reminder, on that day
+   2. a clock time:    "at 3pm", "9:30am", "at 15:30", "at 3"                    -> reminder at that time
+   3. a day:           "today", "tomorrow", "fri", "next week", "in 3 days", "in a few days", "in a couple days", "in a week"
+   A day phrase after "due", "is due", or "by" sets the deadline instead of the do-date.
+   Everything read is cut from the end of the title; out.words keeps it for "Keep as text". */
+var NUMW={a:1,an:1,one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,ten:10,couple:2,few:3};
+function atTime(day,h,mi){ var d=dt(day); d.setHours(h,mi||0,0,0); return d.getTime(); }
 function parseWhen(s){
-  var m, out={rest:s,plan:null,due:null};
-  function cut(m){ out.rest=s.slice(0,m.index); out.words=s.slice(m.index).trim(); }
-  if((m=s.match(/\s+(?:today|tonight)$/i))){ cut(m); out.plan=todayStr(); return out; }
-  if((m=s.match(/\s+(?:tomorrow|tmrw|tmr)$/i))){ cut(m); out.plan=addDays(1); return out; }
-  if((m=s.match(/\s+next week$/i))){ cut(m); out.plan=nextDow(1); return out; }
-  if((m=s.match(/\s+in (\d+) days?$/i))){ cut(m); out.plan=addDays(+m[1]); return out; }
-  if((m=s.match(/\s+(by |due |on )?(sun|sunday|mon|monday|tue|tues|tuesday|wed|weds|wednesday|thu|thur|thurs|thursday|fri|friday|sat|saturday)$/i))){
-    cut(m); var d=nextDow(DOW[m[2].toLowerCase()]);
-    if(m[1]&&/^(by|due)/i.test(m[1])) out.due=d; else out.plan=d;
-    return out;
+  var out={rest:s,plan:null,due:null,remind:null,words:null}, m, time=null;
+  function take(re){ var mm=out.rest.match(re); if(mm) out.rest=out.rest.slice(0,mm.index); return mm; }
+  if((m=take(/\s+in\s+(\d+(?:\.\d+)?|an?|one|two|three|four|five|ten|half\s+an?)\s*(m|mins?|minutes?|h|hrs?|hours?)\.?$/i))){
+    var half=/^half/i.test(m[1]), n=half?0.5:(NUMW[m[1].toLowerCase()]||+m[1]), hrs=half||/^h/i.test(m[2]);
+    out.remind=Math.round((Date.now()+n*(hrs?60:1)*60000)/60000)*60000;   /* to the whole minute */
+    out.plan=ymd(new Date(out.remind));
+  }else{
+    if((m=take(/\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.|a|p)$/i))){
+      var h=+m[1]%12; if(/^p/i.test(m[3])) h+=12; time={h:h,mi:+(m[2]||0)};
+    }else if((m=take(/\s+at\s+(\d{1,2})(?::(\d{2}))?$/i))){
+      var h2=+m[1]; if(h2>=1&&h2<=6) h2+=12;   /* "at 3" means the afternoon */
+      if(h2<24) time={h:h2,mi:+(m[2]||0)};
+    }
+    var day=null, isDue=false, dm;
+    if((dm=take(/\s+(?:today|tonight)$/i))) day=todayStr();
+    else if((dm=take(/\s+(?:tomorrow|tmrw|tmr)$/i))) day=addDays(1);
+    else if((dm=take(/\s+next week$/i))) day=nextDow(1);
+    else if((dm=take(/\s+in\s+(?:a\s+)?(\d+|a|an|one|two|three|four|five|six|seven|couple|few)(?:\s+of)?\s+(days?|weeks?)$/i))){
+      var k=NUMW[dm[1].toLowerCase()]||+dm[1]; day=addDays(/^w/i.test(dm[2])?7*k:k);
+    }
+    else if((dm=take(/\s+(by\s+|due\s+|on\s+)?(sun|sunday|mon|monday|tue|tues|tuesday|wed|weds|wednesday|thu|thur|thurs|thursday|fri|friday|sat|saturday)$/i))){
+      day=nextDow(DOW[dm[2].toLowerCase()]); if(dm[1]&&/^(by|due)/i.test(dm[1])) isDue=true;
+    }
+    if(day&&!isDue&&take(/\s+(?:is\s+)?(?:due|by)$/i)) isDue=true;
+    if(day){ if(isDue) out.due=day; else out.plan=day; }
+    if(time){
+      var when=day||todayStr(), at=atTime(when,time.h,time.mi);
+      if(!day&&at<=Date.now()) { when=addDays(1); at=atTime(when,time.h,time.mi); }
+      out.remind=at;
+      if(!out.plan) out.plan=when;   /* a time means a day to do it, even when a deadline is set too */
+    }
   }
+  out.rest=out.rest.replace(/\s+$/,"");
+  if(out.rest.length<s.length) out.words=s.slice(out.rest.length).trim();
   return out;
 }
 function parseLine(line){
@@ -641,7 +684,7 @@ function parseLine(line){
   s=s.replace(/\s~(\d+)m?(?=\s)/g,function(m,n){t.est=+n;return " "});
   s=s.replace(/\s!(?=\s)/g,function(){t.today=true;return " "});
   s=s.replace(/\s+/g," ").trim();
-  var w=parseWhen(s); t.title=w.rest.trim(); t.plan=w.plan; t.due=w.due; t.words=w.words||null;
+  var w=parseWhen(s); t.title=w.rest.trim(); t.plan=w.plan; t.due=w.due; t.remind=w.remind; t.words=w.words||null;
   if(t.today&&!t.plan) t.plan=todayStr();
   return t;
 }
@@ -660,7 +703,7 @@ function addFromText(raw){
     var p=parseLine(line); if(!p.title) return;
     var pr=null;
     if(p.pname){ pr=findProject(p.pname); if(!pr){ pr={id:uid(),name:p.pname,sequential:false}; S.projects.push(pr); } }
-    var t=mkTask({title:p.title,project:pr?pr.id:null,tags:p.tags,est:p.est,plan:p.plan,due:p.due,order:n+i});
+    var t=mkTask({title:p.title,project:pr?pr.id:null,tags:p.tags,est:p.est,plan:p.plan,due:p.due,remind:p.remind||null,order:n+i});
     if(!t.project&&view.indexOf("p:")===0) t.project=view.slice(2);
     placeByView(t);
     S.tasks.push(t); added++; last=t; lastP=p;
@@ -668,13 +711,14 @@ function addFromText(raw){
   if(!added) return 0;
   save(); render();
   if(added>1){ toast("Added "+added+" tasks."); return added; }
-  var msg=lastP.due&&!lastP.plan?"Added. "+dueLabel(last.due)+".":"Added"+(last.plan?" for "+dayWord(last.plan):"")+".";
+  var msg=last.remind?"Reminder "+remindLabel(last.remind)+".":
+    lastP.due&&!lastP.plan?"Added. "+dueLabel(last.due)+". Reminder that morning.":"Added"+(last.plan?" for "+dayWord(last.plan):"")+".";
   if(!lastP.words){ toast(msg); return added; }
   /* A date came from the last word(s). One tap undoes that reading and keeps the words in the title. */
   var tid=last.id, words=lastP.words, bang=lastP.today, from=view;
   toast(msg,function(){
     var x=task(tid); if(!x) return;
-    x.title=x.title+" "+words; x.plan=bang?todayStr():null; x.due=null;
+    x.title=x.title+" "+words; x.plan=bang?todayStr():null; x.due=null; x.remind=null;
     placeByView(x,from); save(); render(); toast("Kept as text. "+(x.plan?"Set for "+dayWord(x.plan)+".":"No date."));
   },"Keep as text");
   return added;
@@ -698,6 +742,7 @@ function taskRow(t,o){
     if(t.plan<td) m.push('<span class="carry">From '+esc(t.plan===addDays(-1)?"yesterday":dayLabel(t.plan))+'</span>');
     else if(!o.hidePlan) m.push('<span class="plan">'+esc(dayLabel(t.plan))+'</span>');
   }
+  if(t.remind&&!t.done) m.push('<span class="rem'+(t.remind<Date.now()?" past":"")+'">&#9200; '+esc(ymd(new Date(t.remind))===td?clock(t.remind):remindLabel(t.remind).replace(/^tomorrow/,"Tomorrow"))+'</span>');
   if(t.due) m.push('<span class="'+(!t.done&&t.due<td?"late":t.due===td?"due":"")+'">'+esc(dueLabel(t.due))+'</span>');
   if(t.defer&&t.defer>td) m.push('<span>Starts '+esc(dayLabel(t.defer))+'</span>');
   if(t.est) m.push('<span>'+t.est+' min</span>');
@@ -755,6 +800,58 @@ function doAllToday(){
     was.forEach(function(w){ var x=task(w.id); if(x) x.plan=w.plan; }); save(); render();
   });
 }
+
+/* ---------- reminders ----------
+   A task's own reminder fires at its time; anything due today gets one heads-up at 9:00.
+   This runs whenever the app is open (and right when it is reopened). Finished tasks never fire.
+   Each device remembers what it already showed (localStorage onething.notified). */
+var NOTIKEY="onething.notified", DUE_HOUR=9;
+function notiLoad(){ try{ return JSON.parse(localStorage.getItem(NOTIKEY)||"{}"); }catch(e){ return {}; } }
+function notiSave(m){ var old=Date.now()-4*864e5; Object.keys(m).forEach(function(k){ if(m[k]<old) delete m[k]; }); try{ localStorage.setItem(NOTIKEY,JSON.stringify(m)); }catch(e){} }
+function notifyOS(title,body,tag){
+  try{
+    if("Notification" in window&&Notification.permission==="granted"&&navigator.serviceWorker&&navigator.serviceWorker.ready){
+      navigator.serviceWorker.ready.then(function(reg){ reg.showNotification(title,{body:body,tag:tag,icon:"icons/icon-192.png",badge:"icons/icon-192.png"}); });
+      return true;
+    }
+  }catch(e){}
+  return false;
+}
+function checkReminders(){
+  var now=Date.now(), sent=notiLoad(), td=todayStr(), fired=[];
+  S.tasks.forEach(function(t){
+    if(t.done||!t.remind||t.remind>now) return;
+    var k="r:"+t.id+":"+t.remind; if(sent[k]) return;
+    sent[k]=now;
+    if(now-t.remind<6*3600e3) fired.push({t:t,why:"Reminder"});   /* skip ones more than 6 hours stale */
+  });
+  if(new Date().getHours()>=DUE_HOUR) S.tasks.forEach(function(t){
+    if(t.done||t.due!==td) return;
+    var k="d:"+t.id+":"+td; if(sent[k]) return;
+    sent[k]=now; fired.push({t:t,why:"Due today"});
+  });
+  if(!fired.length) return;
+  notiSave(sent);
+  fired.forEach(function(f){
+    if(!notifyOS(f.why==="Due today"?"Due today":"One Thing",f.t.title,f.t.id)) toast((f.why==="Due today"?"Due today: ":"⏰ ")+f.t.title);
+  });
+  if(document.visibilityState==="visible"&&fired.length) render();
+}
+function notiState(){
+  if(!("Notification" in window)) return (navigator.standalone===false||!window.matchMedia("(display-mode: standalone)").matches)?"install":"none";
+  return Notification.permission;   /* default | granted | denied */
+}
+function notiBoxHtml(){
+  if(window.claude) return "";
+  var st=notiState(), h='<div class="section" style="margin:4px 2px 0"><span>Reminders</span></div><div id="notibox" class="fld" style="gap:8px">';
+  if(st==="granted") h+='<span>Notifications are on for this device. Type "in 45 mins" or "at 3pm" on a task to set one.</span>';
+  else if(st==="denied") h+='<span>Notifications are blocked. On iPhone or iPad: Settings &rsaquo; Notifications &rsaquo; One Thing. On a computer: the lock icon next to the address, then Notifications.</span>';
+  else if(st==="install") h+='<span>To get notifications on iPhone or iPad, open One Thing from its home-screen icon, then come back here.</span>';
+  else if(st==="none") h+='<span>This browser cannot show notifications. Reminders show inside the app instead.</span>';
+  else h+='<span>Type "in 45 mins" or "at 3pm" on a task and it reminds you. Allow notifications so they pop up.</span><div class="btns"><button class="btn" data-act="notion">Allow notifications</button></div>';
+  return h+'<span>For now, reminders arrive while the app is open or was just used. Alerts with the app fully closed are coming next.</span></div>';
+}
+function refreshNotiBox(){ var b=$("#notibox"); if(b) b.outerHTML=notiBoxHtml().replace(/^[\s\S]*?(<div id="notibox")/,"$1"); }
 
 /* ---------- calendar ---------- */
 function doneOn(d){ return S.tasks.filter(function(t){ return t.done&&t.doneAt&&ymd(new Date(t.doneAt))===d; }).sort(function(a,b){return a.doneAt-b.doneAt}); }
@@ -875,7 +972,7 @@ function inboxSave(){
 }
 function captureHtml(ph,hint){
   return '<div class="capwrap"><div class="capture"><textarea id="cap" rows="1" placeholder="'+esc(ph)+'" aria-label="Add task"></textarea><button class="go" data-act="add" aria-label="Add">'+IC.plus+'</button></div>'+
-    '<div class="hint">'+(hint||'One per line. End with <code>tomorrow</code> or <code>fri</code> to schedule. Also <code>#project</code> <code>@context</code> <code>~15</code>')+'</div></div>';
+    '<div class="hint">'+(hint||'Try <code>tomorrow</code> <code>fri</code> <code>in 45 mins</code> <code>at 3pm</code> <code>#project</code>')+'</div></div>';
 }
 function head(title,sub,cls){
   return '<div class="head"><div><h1>'+esc(title)+'</h1>'+(sub?'<div class="sub '+(cls||"")+'">'+sub+'</div>':"")+'</div><div class="hbtns">'+
@@ -993,7 +1090,8 @@ function openTask(id){
     '<div class="row2"><label class="fld">Project<select id="f-proj">'+opts+'</select></label>'+
     '<label class="fld">Energy needed<select id="f-energy">'+[["","Not set"],["low","Low"],["med","Medium"],["high","High"]].map(function(e){return '<option value="'+e[0]+'"'+((t.energy||"")===e[0]?" selected":"")+'>'+e[1]+'</option>'}).join("")+'</select></label></div>'+
     '<div class="row2"><label class="fld">Contexts, comma separated<input id="f-tags" value="'+esc((t.tags||[]).join(", "))+'"></label><label class="fld">Minutes<input id="f-est" type="number" min="1" inputmode="numeric" value="'+(t.est||"")+'"></label></div>'+
-    '<label class="fld">Hide until<input id="f-defer" type="date" value="'+(t.defer||"")+'"></label>'+
+    '<div class="row2"><label class="fld">Remind me<input id="f-remind" type="datetime-local" value="'+(t.remind?localInput(t.remind):"")+'"></label>'+
+    '<label class="fld">Hide until<input id="f-defer" type="date" value="'+(t.defer||"")+'"></label></div>'+
     '<label class="tog"><input id="f-later" type="checkbox"'+(t.someday?" checked":"")+'>Park in Later</label>'+
     '<button class="btn" data-act="breakdown" data-id="'+t.id+'">Too big? Break it into steps</button>'+
     '<div class="acts"><button class="btn danger ghost" data-act="deltask" data-id="'+t.id+'">Delete</button><span class="btns"><button class="btn ghost" data-act="closesheet">Cancel</button><button class="btn primary" data-act="savetask" data-id="'+t.id+'">Save</button></span></div>');
@@ -1005,6 +1103,9 @@ function saveTask(id){
   t.title=title; t.notes=$("#f-notes").value.trim();
   t.project=$("#f-proj").value||null; t.energy=$("#f-energy").value||null;
   t.plan=$("#f-plan").value||null; t.due=$("#f-due").value||null; t.defer=$("#f-defer").value||null;
+  var rv=$("#f-remind").value, rms=rv?new Date(rv).getTime():null;
+  t.remind=rms&&!isNaN(rms)?rms:null;
+  if(t.remind&&!t.plan) t.plan=ymd(new Date(t.remind));
   t.tags=$("#f-tags").value.split(",").map(function(x){return x.trim().toLowerCase().replace(/^@/,"")}).filter(Boolean);
   var e=parseInt($("#f-est").value,10); t.est=e>0?e:null;
   t.someday=$("#f-later").checked;
@@ -1054,7 +1155,7 @@ function openSettings(){
   openSheet('<h2>Settings</h2>'+
     '<label class="fld">Good day limit. Today notes when you go past it.<input id="s-lim" type="number" min="1" max="20" inputmode="numeric" value="'+S.settings.todayLimit+'"></label>'+
     (ex?'<button class="btn" data-act="clearex">Delete the example tasks</button>':"")+
-    syncBoxHtml()+aiBoxHtml()+
+    notiBoxHtml()+syncBoxHtml()+aiBoxHtml()+
     '<div class="section" style="margin:4px 2px 0"><span>Backup</span></div>'+
     '<button class="btn" data-act="copybackup">Copy a backup</button>'+
     '<label class="fld">Restore from a backup<textarea id="s-restore" placeholder="Paste backup text, then Restore"></textarea></label>'+
@@ -1389,6 +1490,9 @@ document.addEventListener("click",function(ev){
     case "tray": var tk=a.getAttribute("data-v"); CAL.tray[tk]=!CAL.tray[tk]; render(); break;
     case "inboxsave": inboxSave(); break;
     case "doalltoday": doAllToday(); break;
+    case "notion":
+      try{ Notification.requestPermission().then(function(p){ refreshNotiBox(); if(p==="granted"){ notifyOS("One Thing","Notifications are on.","hello"); toast("Notifications are on."); } }); }catch(e){ refreshNotiBox(); }
+      break;
     case "add": var c=$("#cap"); if(c&&addFromText(c.value)){ var c1=$("#cap"); if(c1){ c1.value=""; c1.style.height=""; c1.focus(); } } break;
     case "up": move(id,-1); break;
     case "down": move(id,1); break;
@@ -1555,6 +1659,9 @@ document.addEventListener("visibilitychange",function(){
 });
 /* GitHub sync: on open, when back online, and every minute while the app is on screen. */
 ghSync();
+checkReminders();
+setInterval(checkReminders,20000);
+document.addEventListener("visibilitychange",function(){ if(document.visibilityState==="visible") checkReminders(); });
 window.addEventListener("online",function(){ ghSync(); });
 setInterval(function(){ if(document.visibilityState==="visible") ghSync(); },60000);
 window.__app={get state(){return S},render:render,setView:function(v){view=v;render()},sync:ghSync};
