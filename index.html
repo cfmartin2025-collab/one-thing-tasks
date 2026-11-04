@@ -129,6 +129,7 @@ ul.list>li:first-child{border-top:0}
 .newp{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:12px;margin-bottom:8px}
 .newp textarea{border:1px solid var(--line);border-radius:12px;background:var(--bg);padding:12px 14px;min-height:110px;resize:vertical;font-size:16px}
 .newp .row{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap}
+.newp .row .btns{margin-left:auto}
 .tplrow{display:flex;gap:6px;flex-wrap:wrap}
 .tpl{display:inline-flex;align-items:center}
 .tpl .x{color:var(--muted);padding:0 8px;font-size:16px}
@@ -230,7 +231,7 @@ var IC={
 
 var S={tasks:[],projects:[],templates:[],settings:{todayLimit:5},updated:0,gone:{},settingsMod:0};
 var view="today", planDay=addDays(1), filt={energy:null}, sync="local", SAMPLE=null, pullOpen=false, newOpen=false;
-var VIEWS=[["today","Today"],["plan","Plan"],["inbox","Inbox"],["projects","Projects"],["later","Later"],["done","Done"]];
+var VIEWS=[["today","Today"],["plan","Plan"],["inbox","Inbox"],["projects","Projects"],["sort","Sort"],["later","Later"],["done","Done"]];
 var BUILTIN=[
   {name:"Commissioning visit",steps:["Pack laptop, cables, and tools","Confirm access and permits for the site","Back up the PLC program before touching anything","Verify I/O against the I/O list","Loop check analog inputs","Test alarms and shutdowns","Back up the final program","Write the service report"]},
   {name:"PLC and HMI build",steps:["Collect the I/O list, P&IDs, and control narrative","Set up the project folders","Build tags, UDTs, and AOIs","Write the control logic","Build the HMI screens","Simulate and test offline","Commission on site","Save as-builts and docs"]},
@@ -645,7 +646,7 @@ function captureHtml(ph,hint){
 }
 function head(title,sub,cls){
   return '<div class="head"><div><h1>'+esc(title)+'</h1>'+(sub?'<div class="sub '+(cls||"")+'">'+sub+'</div>':"")+'</div><div class="hbtns">'+
-    (SAMPLE?'<button class="icon-btn" data-act="ask" aria-label="Sort it out with Claude" title="Sort it out with Claude">'+IC.spark+'</button>':"")+
+    (aiReady()&&view!=="sort"?'<button class="icon-btn" data-act="ask" aria-label="Sort it out with Claude" title="Sort it out with Claude">'+IC.spark+'</button>':"")+
     '<button class="icon-btn" data-act="settings" aria-label="Settings">'+IC.gear+'</button>'+
     '<button class="btn primary" data-act="focus">Focus</button></div></div>';
 }
@@ -710,10 +711,14 @@ function render(){
   }else if(view==="done"){
     var d2=listDone();
     h=head("Done",doneToday()+" today")+listHtml(d2,{},"Nothing finished yet.");
+  }else if(view==="sort"){
+    h=head("Sort it out",ASK.items.length?"Check what Claude found, then add it.":"Describe it in your own words. Claude puts it in the right places.")+sortHtml();
   }
-  var cap=$("#cap"), keep=cap&&document.activeElement===cap?cap.value:null;
+  /* A redraw (for example from sync) must not eat what you are typing. */
+  var ae=document.activeElement, keepId=ae&&(ae.id==="cap"||ae.id==="ask-in")?ae.id:null;
+  var keep=keepId?ae.value:null, selS=keepId?ae.selectionStart:0, selE=keepId?ae.selectionEnd:0;
   m.innerHTML=h;
-  if(keep!==null&&$("#cap")){ $("#cap").value=keep; $("#cap").focus(); }
+  if(keepId&&$("#"+keepId)){ var ne=$("#"+keepId); ne.value=keep; ne.focus(); try{ ne.setSelectionRange(selS,selE); }catch(e){} }
   if($("#cap")) setHint(document.activeElement===$("#cap"));
 }
 function projCard(p){
@@ -727,7 +732,7 @@ function projCard(p){
 
 /* ---------- sheets ---------- */
 function openSheet(html){ $("#sheet").innerHTML=html; $("#veil").classList.add("show"); }
-function closeSheet(){ $("#veil").classList.remove("show"); abortAsk(); }
+function closeSheet(){ $("#veil").classList.remove("show"); }
 function openMore(){
   openSheet('<div class="menu"><button data-view="later"><span style="color:var(--ink)">Later</span><span>'+listLater().length+'</span></button><button data-view="done"><span style="color:var(--ink)">Done</span><span>'+doneToday()+' today</span></button><button data-act="settings"><span style="color:var(--ink)">Settings</span></button></div>');
 }
@@ -822,7 +827,7 @@ function openSettings(){
   openSheet('<h2>Settings</h2>'+
     '<label class="fld">Good day limit. Today notes when you go past it.<input id="s-lim" type="number" min="1" max="20" inputmode="numeric" value="'+S.settings.todayLimit+'"></label>'+
     (ex?'<button class="btn" data-act="clearex">Delete the example tasks</button>':"")+
-    syncBoxHtml()+
+    syncBoxHtml()+aiBoxHtml()+
     '<div class="section" style="margin:4px 2px 0"><span>Backup</span></div>'+
     '<button class="btn" data-act="copybackup">Copy a backup</button>'+
     '<label class="fld">Restore from a backup<textarea id="s-restore" placeholder="Paste backup text, then Restore"></textarea></label>'+
@@ -871,7 +876,77 @@ function move(id,dir){
   save(); render();
 }
 
-/* ---------- Claude ---------- */
+/* ---------- Claude ----------
+   Inside claude.ai: the "sample" capability. As an installed app: the Anthropic API with your own key,
+   kept only on this device (localStorage onething.ai, never in S or backups). One call per tap of
+   Sort it out or I am stuck; nothing runs in the background. The page has no build step, so it calls
+   the API with fetch instead of the SDK. */
+var AI={key:null,status:"",err:""}, AIKEY="onething.ai", AIMODEL="claude-opus-5-5", AIVER="2026-10-21";
+function aiLoad(){ try{ var c=JSON.parse(localStorage.getItem(AIKEY)||"null"); AI.key=(c&&c.key)||null; }catch(e){ AI.key=null; } }
+function aiStore(){ try{ if(AI.key) localStorage.setItem(AIKEY,JSON.stringify({key:AI.key})); else localStorage.removeItem(AIKEY); }catch(e){} }
+function aiReady(){ return !!(SAMPLE||AI.key); }
+function aiHeaders(key){ return {"x-api-key":key||AI.key,"anthropic-version":AIVER,"anthropic-dangerous-direct-browser-access":"true"}; }
+function aiHttpErr(status,j){
+  var msg=(j&&j.error&&j.error.message)||"";
+  if(status===401||status===403) return {code:"bad_key"};
+  if(/credit balance/i.test(msg)) return {code:"no_credit"};
+  if(status===429) return {code:"rate_limited"};
+  if(status>=500) return {code:"overloaded"};
+  return {code:"api",msg:msg};
+}
+function aiJson(prompt,schema,opt){
+  opt=opt||{};
+  if(SAMPLE) return SAMPLE.json(prompt,{cache:false,signal:opt.signal,modelTier:opt.quick?"quick":undefined});
+  if(!AI.key) return Promise.reject({code:"no_key"});
+  function call(withFallback){
+    var body={model:AIMODEL,max_tokens:16000,output_config:{effort:"medium",format:{type:"json_schema",schema:schema}},
+      messages:[{role:"user",content:prompt}]};
+    var h=aiHeaders(); h["content-type"]="application/json";
+    /* If Claude declines, Anthropic re-runs the request on a fallback model inside the same call. */
+    if(withFallback){ body.fallbacks="default"; h["anthropic-beta"]="server-side-fallback-2026-07-01"; }
+    return fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:h,body:JSON.stringify(body),signal:opt.signal}).then(function(r){
+      return r.json().catch(function(){return null}).then(function(j){
+        if(r.ok) return j;
+        if(withFallback&&r.status===400&&/fallback|beta/i.test((j&&j.error&&j.error.message)||"")) return call(false);
+        throw aiHttpErr(r.status,j);
+      });
+    });
+  }
+  return call(true).then(function(j){
+    if(j.stop_reason==="refusal") throw {code:"refusal"};
+    if(j.stop_reason==="max_tokens") throw {code:"too_long"};
+    var txt=(j.content||[]).filter(function(b){return b.type==="text"}).map(function(b){return b.text}).join("");
+    try{ return JSON.parse(txt); }catch(e){ throw {code:"invalid_json"}; }
+  },function(e){
+    if(e&&e.name==="AbortError") throw {code:"cancelled"};
+    if(e&&e.code) throw e;
+    throw {code:"network"};
+  });
+}
+function aiCheckKey(key){
+  key=String(key||"").trim();
+  if(!key){ AI.err="Paste the key first."; refreshAiBox(); return; }
+  AI.status="checking"; AI.err=""; refreshAiBox();
+  /* Listing models is free, so this checks the key without spending credit. */
+  fetch("https://api.anthropic.com/v1/models?limit=1",{headers:aiHeaders(key)}).then(function(r){
+    if(r.ok){ AI.key=key; aiStore(); AI.status=""; toast("Claude is on. Sort it out is ready."); render(); return; }
+    return r.json().catch(function(){return null}).then(function(j){ throw aiHttpErr(r.status,j); });
+  }).catch(function(e){ AI.status=""; AI.err=errCopy(e&&e.code?e:{code:"network"}); }).then(function(){ refreshAiBox(); });
+}
+function aiBoxHtml(){
+  if(SAMPLE) return "";
+  var h='<div class="section" style="margin:4px 2px 0"><span>Claude for Sort it out</span></div><div id="aibox" class="fld" style="gap:8px">';
+  if(!AI.key){
+    h+='<span>Paste your Anthropic API key from console.anthropic.com. It stays on this device. Each Sort it out costs a few cents; nothing runs unless you tap it.</span>'+
+      '<div class="pickrow"><input id="ai-key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="sk-ant-..." aria-label="Anthropic API key"><button class="btn" data-act="aikey"'+(AI.status==="checking"?" disabled":"")+'>'+(AI.status==="checking"?"Checking...":"Save")+'</button></div>';
+  }else{
+    h+='<span>Key saved on this device (ends in '+esc(AI.key.slice(-4))+').</span><div class="btns"><button class="btn small ghost" data-act="aioff">Remove key</button></div>';
+  }
+  if(AI.err) h+='<span style="color:var(--bad)">'+esc(AI.err)+'</span>';
+  return h+'</div>';
+}
+function refreshAiBox(){ var b=$("#aibox"); if(b) b.outerHTML=aiBoxHtml().replace(/^[\s\S]*?(<div id="aibox")/,"$1"); }
+
 var ASK={text:"",items:[],busy:false,ctl:null,err:"",note:""};
 function abortAsk(){ if(ASK.ctl){ try{ASK.ctl.abort()}catch(e){} ASK.ctl=null; } }
 function errCopy(e){
@@ -879,58 +954,89 @@ function errCopy(e){
   if(c==="rate_limited") return "Too many requests right now. Try again in a minute.";
   if(c==="not_granted"||c==="sampling_disabled") return "Claude is not allowed in this view. You can still type tasks yourself.";
   if(c==="invalid_json") return "I could not read the answer. Try again, or use less text.";
+  if(c==="no_key") return "Add your Anthropic API key in Settings to use this.";
+  if(c==="bad_key") return "Anthropic did not accept the API key. Check it in Settings.";
+  if(c==="no_credit") return "Your Anthropic account is out of credit. Add some at console.anthropic.com.";
+  if(c==="overloaded") return "Claude is busy right now. Try again in a minute.";
+  if(c==="refusal") return "Claude would not sort that one. Try wording it differently.";
+  if(c==="too_long") return "That was a lot at once. Try a shorter piece.";
+  if(c==="network") return "Could not reach Claude. Check your connection.";
+  if(c==="api"&&e.msg) return "Claude said: "+e.msg;
   return "That did not work. Try again.";
 }
+/* JSON shapes Claude must answer in (structured outputs). */
+function jObj(props){ return {type:"object",properties:props,required:Object.keys(props),additionalProperties:false}; }
+var J_STR_N={anyOf:[{type:"string"},{type:"null"}]}, J_INT_N={anyOf:[{type:"integer"},{type:"null"}]},
+    J_EN_N={anyOf:[{type:"string",enum:["low","med","high"]},{type:"null"}]};
+var SORT_SCHEMA=jObj({
+  projects:{type:"array",items:jObj({name:{type:"string"},steps:{type:"array",items:jObj({title:{type:"string"},day:J_STR_N,due:J_STR_N,minutes:J_INT_N,energy:J_EN_N})}})},
+  tasks:{type:"array",items:jObj({title:{type:"string"},day:J_STR_N,due:J_STR_N,minutes:J_INT_N,energy:J_EN_N,project:J_STR_N})}
+});
+var STUCK_SCHEMA=jObj({steps:{type:"array",items:jObj({title:{type:"string"},minutes:J_INT_N})}});
 function validDay(v){
   if(v==="today") return todayStr(); if(v==="tomorrow") return addDays(1);
   if(typeof v==="string"&&/^\d{4}-\d{2}-\d{2}$/.test(v)&&v>=todayStr()) return v;
   return null;
 }
-function openAsk(){ ASK={text:"",items:[],busy:false,ctl:null,err:"",note:""}; renderAsk(); }
-function renderAsk(){
-  var h='<h2>Sort it out</h2>';
+/* The Sort tab. Write freely, Claude splits it up, you check it, then it is added. */
+function renderAsk(){ if(view==="sort") render(); }
+function sortHtml(){
+  if(!aiReady()){
+    return '<div class="card"><div class="empty" style="text-align:left;padding:22px">'+
+      '<div style="color:var(--ink);font-weight:600;margin-bottom:6px">Turn on Claude to use this</div>'+
+      'Write a paragraph like "Pump skid job: pull the I/O list, build the AOI, commission Thursday. Call Matt Monday." and Claude turns it into projects, steps, and dates. '+
+      'It needs your Anthropic API key, and costs a few cents each time you tap Sort it out.'+
+      '<div style="margin-top:14px"><button class="btn primary" data-act="settings">Add key in Settings</button></div></div></div>';
+  }
+  var h='';
   if(!ASK.items.length){
-    h+='<label class="fld">Dump anything here, or say what you are stuck on. You approve the result before anything is added.<textarea id="ask-in" placeholder="e.g. finish the tank battery I/O list, call Matt about Monday, truck needs service">'+esc(ASK.text)+'</textarea></label>';
-    if(ASK.err) h+='<div class="sub over">'+esc(ASK.err)+'</div>';
-    h+='<div class="acts"><button class="btn ghost" data-act="closesheet">Cancel</button>'+(ASK.busy?'<span class="btns"><button class="btn ghost" data-act="askstop">Stop</button><button class="btn primary" disabled>Thinking...</button></span>':'<button class="btn primary" data-act="askgo">Sort it out</button>')+'</div>';
+    h+='<div class="newp"><textarea id="ask-in" style="min-height:170px" aria-label="What needs doing" placeholder="e.g. Pump skid job: pull the I/O list, build the AOI, test alarms, commission Thursday. Call Matt Monday about the truck. Order fittings.">'+esc(ASK.text)+'</textarea>'+
+      (ASK.err?'<div class="sub over" style="margin:0 2px">'+esc(ASK.err)+'</div>':'')+
+      '<div class="row"><span class="sub" style="margin:0 2px">Nothing is added until you check it.</span>'+
+      (ASK.busy?'<span class="btns"><button class="btn ghost" data-act="askstop">Stop</button><button class="btn primary" disabled>Sorting...</button></span>'
+               :'<span class="btns">'+(ASK.text?'<button class="btn ghost" data-act="askclear">Clear</button>':'')+'<button class="btn primary" data-act="askgo">Sort it out</button></span>')+
+      '</div></div>';
   }else{
     var groups={}, order=[];
     ASK.items.forEach(function(it,i){ var k=it.proj||""; if(!groups[k]){groups[k]=[];order.push(k);} groups[k].push(i); });
-    h+='<div class="sub" style="margin-top:-8px">Uncheck anything you do not want.</div>';
+    h+='<div class="card" style="padding:4px 16px 8px">';
     order.forEach(function(k){
-      h+='<div class="section" style="margin:12px 2px 2px"><span>'+(k?esc(k):"Loose tasks")+'</span></div>';
+      var ex=k&&projByName(k);
+      h+='<div class="section" style="margin:14px 2px 2px"><span>'+(k?esc(k)+(ex?' &middot; adds to this project':' &middot; new project'):"Loose tasks")+'</span></div>';
       groups[k].forEach(function(i){
         var it=ASK.items[i], m=[];
         if(it.plan) m.push('<span class="plan">'+esc(dayLabel(it.plan))+'</span>');
+        if(it.due) m.push('<span class="due">'+esc(dueLabel(it.due))+'</span>');
         if(it.est) m.push('<span>'+it.est+' min</span>');
         if(it.energy) m.push('<span>'+it.energy+' energy</span>');
         h+='<label class="ai"><input type="checkbox" data-ai="'+i+'"'+(it.on?" checked":"")+'><span><div>'+esc(it.title)+'</div>'+(m.length?'<div class="meta">'+m.join("")+'</div>':"")+'</span></label>';
       });
     });
-    h+='<div class="acts"><button class="btn ghost" data-act="askback">Back</button><button class="btn primary" data-act="askadd">Add selected</button></div>';
+    var on=ASK.items.filter(function(x){return x.on}).length;
+    h+='</div><div class="acts" style="margin-top:14px;display:flex;justify-content:space-between;gap:8px"><button class="btn ghost" data-act="askback">Back to my text</button><button class="btn primary" data-act="askadd">Add '+on+' '+(on===1?"item":"items")+'</button></div>';
   }
-  openSheet(h);
-  var e=$("#ask-in"); if(e&&window.innerWidth>760&&!ASK.busy) e.focus();
+  return h;
 }
 function askGo(){
-  if(!SAMPLE||ASK.busy) return;
+  if(!aiReady()||ASK.busy) return;
   var txt=($("#ask-in").value||"").trim(); if(!txt) return;
   ASK.text=txt; ASK.busy=true; ASK.err=""; ASK.ctl=new AbortController(); renderAsk();
   var projNames=S.projects.map(function(p){return p.name}).slice(0,30);
   var prompt=
 "You are the planning helper inside a personal to-do app. The user is capable and fast once started, but ADHD makes setup and first steps hard. Turn their messy text into concrete tasks.\n"+
-"Rules:\n- Titles start with a verb, under 70 characters, concrete.\n- Anything over about 30 minutes becomes a project with 3 to 8 steps. The first step must be tiny and startable in under 5 minutes.\n- day is \"today\", \"tomorrow\", a YYYY-MM-DD date, or null when unscheduled. Plan at most "+S.settings.todayLimit+" tasks for today. Use null when unsure.\n- minutes is an integer or null. energy is \"low\", \"med\", \"high\" or null.\n- If a loose task belongs in one of the existing projects, set its project to that exact name.\n- Do not invent tasks the text does not imply. Do not add commentary.\n"+
+"Rules:\n- Titles start with a verb, under 70 characters, concrete.\n- Anything over about 30 minutes becomes a project with 3 to 8 steps, in the order they should be done. The first step must be tiny and startable in under 5 minutes.\n- When the text names a project and lists what it needs, make that a project with those steps in order. Keep the user's own wording for steps where it is already concrete.\n- If the text adds work to one of the existing projects, use a projects entry with that exact existing name and list only the new steps.\n- day is when to do it: \"today\", \"tomorrow\", a YYYY-MM-DD date, or null when unscheduled. Plan at most "+S.settings.todayLimit+" tasks for today. Use null when unsure.\n- due is a deadline the text states (\"by Friday\", \"due the 12th\"), as YYYY-MM-DD, otherwise null.\n- minutes is an integer or null. energy is \"low\", \"med\", \"high\" or null.\n- If a loose task belongs in one of the existing projects, set its project to that exact name.\n- Do not invent tasks the text does not imply. Do not add commentary.\n"+
 "Today is "+dt(todayStr()).toLocaleDateString("en-US",{weekday:"long"})+" "+todayStr()+". Tasks already planned today: "+listToday().length+".\n"+
 "Existing projects: "+JSON.stringify(projNames)+"\n"+
-"Reply with ONLY this JSON shape:\n{\"projects\":[{\"name\":\"\",\"steps\":[{\"title\":\"\",\"day\":null,\"minutes\":null,\"energy\":null}]}],\"tasks\":[{\"title\":\"\",\"day\":null,\"minutes\":null,\"energy\":null,\"project\":null}]}\n\nUser text:\n\"\"\"\n"+txt.slice(0,6000)+"\n\"\"\"";
-  SAMPLE.json(prompt,{cache:false,signal:ASK.ctl.signal}).then(function(r){
+"Reply with ONLY this JSON shape:\n{\"projects\":[{\"name\":\"\",\"steps\":[{\"title\":\"\",\"day\":null,\"due\":null,\"minutes\":null,\"energy\":null}]}],\"tasks\":[{\"title\":\"\",\"day\":null,\"due\":null,\"minutes\":null,\"energy\":null,\"project\":null}]}\n\nUser text:\n\"\"\"\n"+txt.slice(0,6000)+"\n\"\"\"";
+  function pick(s,o){ return {title:String(s.title).slice(0,120),plan:validDay(s.day),due:validDay(s.due),est:+s.minutes>0?Math.round(+s.minutes):null,energy:/^(low|med|high)$/.test(s.energy)?s.energy:null,on:true,proj:o.proj,newProj:o.newProj}; }
+  aiJson(prompt,SORT_SCHEMA,{signal:ASK.ctl.signal}).then(function(r){
     var items=[];
     ((r&&r.projects)||[]).forEach(function(p){
       if(!p||!p.name||!Array.isArray(p.steps)) return;
-      p.steps.forEach(function(s,i){ if(s&&s.title) items.push({title:String(s.title).slice(0,120),proj:String(p.name),newProj:true,step:i,plan:i===0?validDay(s.day):null,est:+s.minutes>0?Math.round(+s.minutes):null,energy:/^(low|med|high)$/.test(s.energy)?s.energy:null,on:true}); });
+      p.steps.forEach(function(s){ if(s&&s.title) items.push(pick(s,{proj:String(p.name).slice(0,80),newProj:true})); });
     });
     ((r&&r.tasks)||[]).forEach(function(t){
-      if(t&&t.title) items.push({title:String(t.title).slice(0,120),proj:t.project?String(t.project):null,newProj:false,step:-1,plan:validDay(t.day),est:+t.minutes>0?Math.round(+t.minutes):null,energy:/^(low|med|high)$/.test(t.energy)?t.energy:null,on:true});
+      if(t&&t.title) items.push(pick(t,{proj:t.project?String(t.project).slice(0,80):null,newProj:false}));
     });
     ASK.busy=false; ASK.ctl=null;
     if(!items.length){ ASK.err="I did not find any tasks in that. Try adding more detail."; }
@@ -951,11 +1057,14 @@ function askAdd(){
       if(!p){ p={id:uid(),name:it.proj,sequential:it.newProj}; S.projects.push(p); }
       made[key]=p;
     }
-    var t=mkTask({title:it.title,project:p?p.id:null,plan:it.plan,est:it.est,energy:it.energy,order:n+(k++)});
-    if(!t.project&&!t.plan) t.inbox=true;
+    var t=mkTask({title:it.title,project:p?p.id:null,plan:it.plan,due:it.due||null,est:it.est,energy:it.energy,order:n+(k++)});
+    if(!t.project&&!t.plan&&!t.due) t.inbox=true;
     S.tasks.push(t); count++;
   });
-  save(); closeSheet(); render(); toast(count?"Added "+count+" "+(count===1?"task":"tasks")+".":"Nothing selected.");
+  if(!count){ toast("Nothing selected."); return; }
+  var projs=Object.keys(made).length;
+  save(); ASK={text:"",items:[],busy:false,ctl:null,err:"",note:""}; render();
+  toast("Added "+count+" "+(count===1?"item":"items")+(projs?" across "+projs+" "+(projs===1?"project":"projects"):"")+".");
 }
 /* stuck helper inside Focus */
 var STUCK={busy:false,steps:[],err:"",ctl:null};
@@ -970,11 +1079,11 @@ function renderStuck(){
   h+='</div>'; b.innerHTML=h;
 }
 function stuckGo(){
-  var t=curTask(); if(!t||!SAMPLE||STUCK.busy) return;
+  var t=curTask(); if(!t||!aiReady()||STUCK.busy) return;
   STUCK={busy:true,steps:[],err:"",ctl:new AbortController()}; renderStuck();
   var p=proj(t.project);
   var prompt="The user is stuck starting this task and has ADHD. Give 3 to 5 tiny, concrete steps to get it started. The first step must take under 2 minutes and need no decisions. Each step starts with a verb and is under 60 characters.\nTask: "+t.title+(t.notes?"\nNotes: "+t.notes.slice(0,500):"")+(p?"\nProject: "+p.name:"")+"\nReply with ONLY JSON: {\"steps\":[{\"title\":\"\",\"minutes\":2}]}";
-  SAMPLE.json(prompt,{cache:false,signal:STUCK.ctl.signal,modelTier:"quick"}).then(function(r){
+  aiJson(prompt,STUCK_SCHEMA,{signal:STUCK.ctl.signal,quick:true}).then(function(r){
     var st=((r&&r.steps)||[]).filter(function(s){return s&&s.title}).slice(0,6).map(function(s){return {title:String(s.title).slice(0,100),minutes:+s.minutes>0?Math.round(+s.minutes):null}});
     STUCK.busy=false; STUCK.ctl=null; if(!st.length) STUCK.err="No steps came back. Try again."; STUCK.steps=st; renderStuck();
   }).catch(function(e){ STUCK.busy=false; STUCK.ctl=null; if(e&&e.code==="cancelled"){ STUCK.err=""; } else STUCK.err=errCopy(e); renderStuck(); });
@@ -1015,7 +1124,7 @@ function renderFocus(){
     '<button class="btn primary fdone" data-act="fdone">Done</button>'+
     '<div class="timer" id="ftimer" aria-live="off">'+(F.end?fmt(F.end-Date.now()):(t.est?fmt(t.est*60000):"00:00"))+'</div>'+
     '<div class="frow"><button class="btn small ghost" data-act="tm" data-m="5">Just 5 min</button><button class="btn small ghost" data-act="tm" data-m="15">15 min</button><button class="btn small ghost" data-act="tm" data-m="25">25 min</button></div>'+
-    '<div class="frow"><button class="btn small ghost" data-act="fskip">Not now</button><button class="btn small ghost" data-act="fsmall">Shrink it</button>'+(SAMPLE?'<button class="btn small ghost" data-act="stuck">I am stuck</button>':"")+'</div>'+
+    '<div class="frow"><button class="btn small ghost" data-act="fskip">Not now</button><button class="btn small ghost" data-act="fsmall">Shrink it</button>'+(aiReady()?'<button class="btn small ghost" data-act="stuck">I am stuck</button>':"")+'</div>'+
     '<div id="smallbox" style="width:100%"></div></div>';
   renderStuck();
 }
@@ -1115,10 +1224,13 @@ document.addEventListener("click",function(ev){
     case "ghconnect": ghConnect($("#gh-token").value); break;
     case "ghsync": ghSync(); refreshSyncBox(); break;
     case "ghoff": GH.cfg=null; GH.status=""; GH.err=""; ghStore(); renderSync(); refreshSyncBox(); toast("Sync is off on this device. Your tasks stay here."); break;
-    case "ask": openAsk(); break;
+    case "ask": view="sort"; render(); $("#main").scrollTop=0; break;
     case "askgo": askGo(); break;
     case "askstop": abortAsk(); ASK.busy=false; renderAsk(); break;
     case "askback": ASK.items=[]; ASK.err=""; renderAsk(); break;
+    case "askclear": ASK.text=""; ASK.err=""; renderAsk(); break;
+    case "aikey": aiCheckKey($("#ai-key").value); break;
+    case "aioff": AI.key=null; AI.err=""; aiStore(); refreshAiBox(); render(); toast("Key removed from this device."); break;
     case "askadd": askAdd(); break;
     case "exitfocus": closeFocus(); break;
     case "tm": startTimer(parseInt(a.getAttribute("data-m"),10)); break;
@@ -1142,7 +1254,11 @@ document.addEventListener("click",function(ev){
 });
 document.addEventListener("change",function(ev){
   var i=ev.target.getAttribute&&ev.target.getAttribute("data-ai");
-  if(i!==null&&i!==undefined&&ASK.items[+i]) ASK.items[+i].on=ev.target.checked;
+  if(i!==null&&i!==undefined&&ASK.items[+i]){
+    ASK.items[+i].on=ev.target.checked;
+    var b=document.querySelector('[data-act="askadd"]'), on=ASK.items.filter(function(x){return x.on}).length;
+    if(b) b.textContent="Add "+on+" "+(on===1?"item":"items");
+  }
 });
 document.addEventListener("keydown",function(ev){
   if(ev.target.id==="cap"&&ev.key==="Enter"&&!ev.shiftKey){
@@ -1163,10 +1279,12 @@ document.addEventListener("focusin",function(ev){ if(ev.target.id==="cap"){ hint
 document.addEventListener("focusout",function(ev){ if(ev.target.id==="cap"){ if(pressing) hintHide=true; else setHint(false); } });
 document.addEventListener("input",function(ev){
   if(ev.target.id==="cap"){ ev.target.style.height="auto"; ev.target.style.height=Math.min(ev.target.scrollHeight,160)+"px"; }
+  if(ev.target.id==="ask-in") ASK.text=ev.target.value;
 });
 
 ghLoad();
-if(window.claude) GH.cfg=null;   /* inside claude.ai the db capability syncs instead */
+aiLoad();
+if(window.claude){ GH.cfg=null; AI.key=null; }   /* inside claude.ai the db and sample capabilities are used instead */
 loadLocal();
 render();
 initSync();

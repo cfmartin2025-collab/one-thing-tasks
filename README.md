@@ -29,12 +29,27 @@ Outside claude.ai the app can sync through a private GitHub repo `<you>/one-thin
 Settings → Sync across devices → paste a fine-grained token that can only read and write that one repo.
 The token is kept in that device's localStorage (`onething.sync`), never in the data or in backups.
 
-- This is the only network endpoint the page calls (`api.github.com`), and only after you connect.
+- The page calls `api.github.com` only after you connect (see also Sort it out below).
 - Each round reads `data.json`, merges item by item (newest change wins; deletions are remembered for
   90 days), and writes back only if something is new. The file's `sha` prevents blind overwrites.
 - Syncs on open, when you come back to the app, 2 s after a change, every minute while on screen,
   and when the connection returns.
 - A device's own example tasks are not uploaded when it joins.
+
+## Sort it out (Claude)
+
+The **Sort** tab turns a paragraph into projects, ordered steps, do-dates, deadlines, and loose
+tasks. You check the result before anything is added. Focus's **I am stuck** uses the same plumbing.
+
+- Inside claude.ai it uses the artifact's `sample` capability.
+- As an installed app it calls the Anthropic Messages API directly from the page with your own key
+  (Settings → Claude for Sort it out). The key is kept in that device's localStorage (`onething.ai`),
+  never in the synced data or backups. Saving the key checks it against the free `/v1/models` endpoint.
+- Model `claude-opus-5-5`, effort `medium`, structured outputs (`output_config.format` JSON schema),
+  `anthropic-version: 2026-10-21`, server-side refusal fallback (`fallbacks: "default"`, retried once
+  without it if the API rejects the option). Plain `fetch`, since the page has no build step for the SDK.
+- One request per tap; nothing runs in the background. Roughly a few cents per Sort it out.
+- Second network endpoint the page can call: `api.anthropic.com`, only when you tap Sort it out or I am stuck.
 
 Data version 2 adds `mod` (last change time) to tasks, projects, and templates, plus `gone` (deleted
 id → time) and `settingsMod`. `norm()` migrates older data.
