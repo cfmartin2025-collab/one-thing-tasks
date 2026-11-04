@@ -178,7 +178,14 @@ test("carried over: an unfinished past-day task shows on Today", async ({ page }
     s.tasks.push({ id: "old1", title: "Yesterday's job", notes: "", project: null, tags: [], energy: null, due: null, defer: null, est: null, plan: "2026-11-03", someday: false, done: false, doneAt: null, inbox: false, created: 1, order: 1 });
     window.__app.render();
   });
-  await expect(page.locator("li.task", { hasText: "Yesterday's job" }).locator(".carry")).toHaveText("Carried over");
+  await expect(page.locator("li.task", { hasText: "Yesterday's job" }).locator(".carry")).toHaveText("From yesterday");
+  await expect(page.locator(".earlier .dsub")).toContainText("From earlier · 1");
+  // One tap makes it today's; Undo puts it back.
+  await page.locator('.earlier [data-act="doalltoday"]').click();
+  await expect(page.locator(".earlier")).toHaveCount(0);
+  expect((await byTitle(page, "Yesterday's job")).plan).toBe(TODAY);
+  await page.locator("#undo").click();
+  expect((await byTitle(page, "Yesterday's job")).plan).toBe("2026-11-03");
 });
 
 test("PWA: manifest and icons are linked and valid", async ({ page }) => {

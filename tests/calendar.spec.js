@@ -126,6 +126,43 @@ test("month shows counts, deadlines, finished days, and the picked day", async (
   await expect(page.locator('[data-act="calnow"]')).toBeVisible();
 });
 
+test("left over from earlier: grouped on Today, red dot on past day, drag it forward from last week", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const d = await page.evaluate(() => {
+    const pad = (n) => String(n).padStart(2, "0");
+    const ymd = (x) => x.getFullYear() + "-" + pad(x.getMonth() + 1) + "-" + pad(x.getDate());
+    const add = (n) => { const x = new Date(); x.setHours(12); x.setDate(x.getDate() + n); return ymd(x); };
+    const s = window.__app.state; s.tasks = []; s.projects = [];
+    s.tasks.push({ id: "old", title: "Missed one", notes: "", project: null, tags: [], energy: null, due: null, defer: null, est: null, plan: add(-2), someday: false, done: false, doneAt: null, inbox: false, created: 1, order: 1, mod: 1 });
+    s.tasks.push({ id: "new", title: "Fresh one", notes: "", project: null, tags: [], energy: null, due: null, defer: null, est: null, plan: add(0), someday: false, done: false, doneAt: null, inbox: false, created: 2, order: 2, mod: 1 });
+    window.__app.render();
+    return { today: add(0), old: add(-2), d2: add(2) };
+  });
+  await page.locator('.nav[data-view="cal"]').first().click();
+  const todayCol = page.locator(".week .dcol").nth(0);
+  await expect(todayCol.locator(".dsub").first()).toContainText("From earlier · 1");
+  await expect(todayCol).toContainText("Missed one");
+  await expect(todayCol.locator(".carry")).toContainText("From");
+
+  // Last week: the past day shows it as left over, and you can drag it to a future day.
+  await page.locator('[data-act="calstep"][data-v="-1"]').click();
+  const pastCol = page.locator(".week .dcol.past", { hasText: "Missed one" });
+  await expect(pastCol.locator(".cnt.left")).toHaveText("1 left over");
+  await page.locator('[data-act="calnow"]').click();
+  await row(page, "Missed one").dragTo(page.locator(`.week [data-drop="${d.d2}"]`));
+  expect((await byTitle(page, "Missed one")).plan).toBe(d.d2);
+
+  // Month: the past day gets a red left-over dot only while something is left there.
+  await page.evaluate((old) => { const t = window.__app.state.tasks.find((x) => x.id === "old"); t.plan = old; window.__app.render(); }, d.old);
+  await page.locator('[data-act="calmode"][data-v="month"]').click();
+  const cell = page.locator(`.mday[data-v="${d.old}"]`);
+  if (await cell.count()) {
+    await expect(cell.locator("i.left")).toHaveCount(1);
+    await expect(cell).toHaveAttribute("aria-label", /1 left over/);
+  }
+  await expect(page.locator(".mlegend")).toContainText("left over");
+});
+
 test("Not scheduled tray: Anytime and Later, and parking an idea", async ({ page }) => {
   await load(page);
   await page.locator('.nav[data-view="cal"]').first().click();

@@ -211,19 +211,31 @@ li.task[draggable="true"]{cursor:grab}
 .mday.sel{background:var(--ink);color:var(--bg)}
 /* In a month cell the only number is the date. Tasks are dots, due is an amber dot, done days get a check. */
 .mdots{display:flex;gap:3px;align-items:center;height:8px}
-.mdots i{width:6px;height:6px;border-radius:50%;background:var(--accent)}
+.mdots i{width:6px;height:6px;border-radius:50%;background:var(--muted)}
 .mdots i.due,.mlegend i.due{width:8px;height:8px;background:transparent;border:2px solid var(--warn);box-sizing:border-box}
 .mday.sel .mdots i.due{border-color:var(--warn)}
 .mdots b{font-size:10px;line-height:1;font-weight:700;color:var(--muted)}
 .mday .ok{font-size:12px;line-height:8px;color:var(--ok);font-weight:700}
-.mday.sel .mdots i:not(.due){background:var(--bg)}
+.mday.sel .mdots i:not(.due):not(.left){background:var(--bg)}
 .mday.sel .mdots b,.mday.sel .ok{color:var(--bg)}
-.mlegend{grid-column:1/-1;display:flex;gap:16px;justify-content:center;font-size:12px;color:var(--muted);padding:8px 0 2px}
+.mlegend{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px 14px;justify-content:center;font-size:12px;color:var(--muted);padding:8px 0 2px}
 .mlegend span{display:inline-flex;align-items:center;gap:6px}
-.mlegend i{width:6px;height:6px;border-radius:50%;background:var(--accent);display:inline-block}
+.mlegend i{width:6px;height:6px;border-radius:50%;background:var(--muted);display:inline-block}
 .mlegend .ok{color:var(--ok);font-weight:700}
+.mdots i.left,.mlegend i.left{background:var(--bad)}
+.mday.sel .mdots i.left{background:var(--bad)}
+.cnts{display:flex;gap:6px;flex-wrap:wrap}
+.cnt.left{color:var(--bad);background:color-mix(in srgb,var(--bad) 10%,transparent)}
+.dsub{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 8px 8px 16px;font-size:13px;font-weight:600;color:var(--bad);background:color-mix(in srgb,var(--bad) 6%,transparent)}
+.dsub.incol{border-top:1px solid var(--line)}
+.dsub.plain{color:var(--muted);background:transparent;padding:8px 16px}
+.dsub button{font-size:13px;font-weight:700;color:var(--ink);padding:6px 10px;border-radius:9px;background:var(--surface);border:1px solid var(--line);min-height:32px}
+.dsub button:hover{border-color:var(--line2)}
+.earlier .list>li:first-child{border-top:1px solid var(--line)}
+.meta .carry{color:var(--bad)}
+.dcol.past .dhead span{color:var(--muted)}
 .cnt{font-size:12px;font-weight:600;color:var(--muted);background:var(--soft);border-radius:99px;padding:2px 9px;white-space:nowrap;font-style:normal}
-.dhead .dname small{margin-left:8px}
+.dhead .dname small{margin-left:8px;white-space:nowrap}
 .trayh{display:flex;justify-content:space-between;align-items:center;width:100%;padding:14px 16px;font-weight:600;border-top:1px solid var(--line);min-height:50px;text-align:left}
 .trayh:first-child{border-top:0}
 .trayh span{color:var(--muted);font-weight:500;font-size:14px}
@@ -236,7 +248,9 @@ li.task[draggable="true"]{cursor:grab}
   .main.wide .week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;align-items:stretch}
   .main.wide .week .dcol{min-height:240px;display:flex;flex-direction:column}
   .main.wide .week .dcol .list{flex:1}
-  .main.wide .week .dhead{flex-direction:column;gap:0;padding:10px 10px 8px}
+  .main.wide .week .dhead{flex-direction:column;align-items:flex-start;gap:6px;padding:10px 10px 8px}
+  .main.wide .week .dname span{display:block}
+  .main.wide .week .dname small{display:block;margin-left:0}
   .main.wide .week .task{padding:9px 6px 9px 9px;gap:8px;font-size:14px}
   .main.wide .week .task .side{display:none}
   .main.wide .week .check{width:20px;height:20px}
@@ -250,6 +264,8 @@ li.task[draggable="true"]{cursor:grab}
   .main.wide .week .capture{padding:4px 4px 4px 10px}
   .main.wide .week .capture .go{width:32px;height:32px}
   .main.wide .week .hint{display:none!important}
+  .main.wide .week .dsub{padding:6px 6px 6px 9px;font-size:12px;flex-wrap:wrap}
+  .main.wide .week .dsub button{padding:4px 8px;font-size:12px;min-height:28px}
   .monthwrap{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:22px;align-items:start}
   .mday{height:72px}
 }
@@ -679,7 +695,7 @@ function taskRow(t,o){
   var td=todayStr(), p=proj(t.project), m=[];
   if(p&&!o.hideProj) m.push('<span>'+esc(p.name)+'</span>');
   if(t.plan&&!t.done){
-    if(t.plan<td) m.push('<span class="carry">Carried over</span>');
+    if(t.plan<td) m.push('<span class="carry">From '+esc(t.plan===addDays(-1)?"yesterday":dayLabel(t.plan))+'</span>');
     else if(!o.hidePlan) m.push('<span class="plan">'+esc(dayLabel(t.plan))+'</span>');
   }
   if(t.due) m.push('<span class="'+(!t.done&&t.due<td?"late":t.due===td?"due":"")+'">'+esc(dueLabel(t.due))+'</span>');
@@ -717,6 +733,29 @@ function pullHtml(day){
     return '<li class="sug" data-id="'+t.id+'"><div class="body" data-act="open"><div class="title">'+esc(t.title)+'</div>'+(m.length?'<div class="meta">'+m.join("")+'</div>':"")+'</div><button class="icon-btn sm" data-act="pull" data-day="'+day+'" aria-label="Add">'+IC.plus+'</button></li>';
   }).join("")+'</ul>';
 }
+/* ---------- left over from earlier days ----------
+   An unfinished task whose day has passed (or whose deadline passed with no day set).
+   It still shows on Today, grouped on its own, with one tap to make it today's. */
+function isLeftover(t){ var td=todayStr(); return !t.done&&!t.someday&&((t.plan&&t.plan<td)||(!t.plan&&t.due&&t.due<td)); }
+function earlierList(){ return listToday().filter(isLeftover); }
+function leftOn(d){ return S.tasks.filter(function(t){ return !t.done&&!t.someday&&(t.plan===d||(!t.plan&&t.due===d)); }); }
+function earlierHead(n,inCol){
+  return '<div class="dsub'+(inCol?' incol':'')+'"><span>From earlier &middot; '+n+'</span><button data-act="doalltoday">Do today</button></div>';
+}
+function earlierHtml(){
+  var e=earlierList(); if(!e.length) return "";
+  return '<div class="card earlier" style="margin-bottom:12px">'+earlierHead(e.length)+'<ul class="list">'+e.map(function(t){return taskRow(t,{hidePlan:false})}).join("")+'</ul></div>';
+}
+function doAllToday(){
+  var e=earlierList(); if(!e.length) return;
+  var was=e.map(function(t){return {id:t.id,plan:t.plan}}), td=todayStr();
+  e.forEach(function(t){ t.plan=td; });
+  save(); render();
+  toast(e.length===1?"Moved to today.":"Moved "+e.length+" to today.",function(){
+    was.forEach(function(w){ var x=task(w.id); if(x) x.plan=w.plan; }); save(); render();
+  });
+}
+
 /* ---------- calendar ---------- */
 function doneOn(d){ return S.tasks.filter(function(t){ return t.done&&t.doneAt&&ymd(new Date(t.doneAt))===d; }).sort(function(a,b){return a.doneAt-b.doneAt}); }
 function shortDate(d){ return dt(d).toLocaleDateString(undefined,{month:"short",day:"numeric"}); }
@@ -738,12 +777,23 @@ function calBar(){
 }
 function dayCol(d){
   var td=todayStr(), past=d<td, dd=dt(d);
-  var arr=past?doneOn(d):tasksForDay(d);
-  var name=d===td?"Today":d===addDays(1)?"Tomorrow":dd.toLocaleDateString(undefined,{weekday:"long"});
-  var n=arr.length, cnt=n?'<em class="cnt">'+n+' '+(past?"done":n===1?"task":"tasks")+'</em>':'';
-  var h='<div class="dcol'+(d===td?" today":"")+'"'+(past?'':' data-drop="'+d+'"')+'><div class="dhead"><div class="dname"><span>'+esc(name)+'</span><small>'+esc(shortDate(d))+'</small></div>'+cnt+'</div>';
-  if(arr.length) h+='<ul class="list">'+arr.map(function(t){return taskRow(t,{hidePlan:true,drag:!past})}).join("")+'</ul>';
-  if(!past) h+=CAL.add===d?captureHtml("Add to "+dayWord(d)):'<button class="dadd" data-act="dayadd" data-v="'+d+'">+ Add</button>';
+  var name=d===td?"Today":d===addDays(1)?"Tomorrow":d===addDays(-1)?"Yesterday":dd.toLocaleDateString(undefined,{weekday:"long"});
+  var h, cnt, list=function(a,o){ return a.length?'<ul class="list">'+a.map(function(t){return taskRow(t,o)}).join("")+'</ul>':''; };
+  if(past){
+    /* A past day: what you finished, and anything still sitting there (drag it forward). */
+    var dn=doneOn(d), lo=leftOn(d);
+    cnt=(dn.length?'<em class="cnt">'+dn.length+' done</em>':'')+(lo.length?'<em class="cnt left">'+lo.length+' left over</em>':'');
+    h='<div class="dcol past"><div class="dhead"><div class="dname"><span>'+esc(name)+'</span><small>'+esc(shortDate(d))+'</small></div><div class="cnts">'+cnt+'</div></div>'+
+      list(lo,{hidePlan:true,drag:true})+list(dn,{hidePlan:true});
+    return h+'</div>';
+  }
+  var arr=tasksForDay(d), early=d===td?arr.filter(isLeftover):[], rest=early.length?arr.filter(function(t){return !isLeftover(t)}):arr;
+  var n=arr.length;
+  cnt=n?'<em class="cnt">'+n+' '+(n===1?"task":"tasks")+'</em>':'';
+  h='<div class="dcol'+(d===td?" today":"")+'" data-drop="'+d+'"><div class="dhead"><div class="dname"><span>'+esc(name)+'</span><small>'+esc(shortDate(d))+'</small></div>'+cnt+'</div>';
+  if(early.length) h+=earlierHead(early.length,true)+list(early,{drag:true});
+  if(rest.length) h+=(early.length?'<div class="dsub plain incol">Today</div>':'')+list(rest,{hidePlan:true,drag:true});
+  h+=CAL.add===d?captureHtml("Add to "+dayWord(d)):'<button class="dadd" data-act="dayadd" data-v="'+d+'">+ Add</button>';
   return h+'</div>';
 }
 function weekHtml(){
@@ -758,20 +808,20 @@ function monthHtml(){
   for(var i=0;i<lead;i++) g+='<div class="mday blank"></div>';
   for(var dn=1;dn<=n;dn++){
     var d=y+"-"+pad(mo+1)+"-"+pad(dn), past=d<td;
-    var c=past?doneOn(d).length:tasksForDay(d).length;
+    var c=past?doneOn(d).length:tasksForDay(d).length, left=past?leftOn(d).length:0;
     var due=!past&&S.tasks.some(function(t){return !t.done&&t.due===d});
     var marks='';
-    if(past){ if(c) marks='<span class="ok" aria-hidden="true">&#10003;</span>'; }
+    if(past){ if(c||left) marks='<span class="mdots" aria-hidden="true">'+(c?'<span class="ok">&#10003;</span>':'')+(left?'<i class="left"></i>':'')+'</span>'; }
     else if(c||due){
       var dots=(due?'<i class="due"></i>':'');
       for(var j=0;j<Math.min(c-(due?1:0),due?2:3);j++) dots+='<i></i>';
       marks='<span class="mdots" aria-hidden="true">'+dots+(c>3?'<b>+</b>':'')+'</span>';
     }
     g+='<button class="mday'+(past?" past":"")+(d===td?" today":"")+(d===sel?" sel":"")+'" data-act="calpick" data-v="'+d+'" data-count="'+c+'"'+(past?'':' data-drop="'+d+'"')+
-      ' aria-label="'+esc(dt(d).toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"}))+(c?", "+c+(past?" done":c===1?" task":" tasks"):"")+(due?", something due":"")+'">'+
+      ' aria-label="'+esc(dt(d).toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"}))+(c?", "+c+(past?" done":c===1?" task":" tasks"):"")+(left?", "+left+" left over":"")+(due?", something due":"")+'">'+
       '<span>'+dn+'</span>'+marks+'</button>';
   }
-  g+='<div class="mlegend" aria-hidden="true"><span><i></i>task</span><span><i class="due"></i>due</span><span><b class="ok">&#10003;</b>done</span></div>';
+  g+='<div class="mlegend" aria-hidden="true"><span><i></i>task</span><span><i class="due"></i>due</span><span><b class="ok">&#10003;</b>done</span><span><i class="left"></i>left over</span></div>';
   return '<div class="monthwrap">'+g+'</div><div>'+dayCol(sel)+'</div></div>';
 }
 function trayHtml(){
@@ -858,7 +908,7 @@ function render(){
       :(new Date().getHours()>=15&&tmr===0)?'<div class="banner"><span>Tomorrow is empty.</span><button class="btn small ghost" data-act="plantomorrow">Plan it</button></div>':"";
     h=head("Today",td.length+" planned"+(over?" &middot; over your limit of "+lim:""),over?"over":"")+
       banner+captureHtml("Add to today")+
-      listHtml(td,{hidePlan:true},"Nothing planned yet.")+pullHtml(todayStr())+
+      earlierHtml()+listHtml(td.filter(function(t){return !isLeftover(t)}),{hidePlan:true},earlierList().length?"Nothing else planned for today.":"Nothing planned yet.")+pullHtml(todayStr())+
       '<div class="links"><button class="linkbtn" data-act="plantomorrow">See the week &rarr;</button>'+(nDone?'<button class="linkbtn" data-view="done">'+nDone+' done today &rarr;</button>':'')+'</div>';
   }else if(view==="cal"){
     h=head("Calendar",calSub())+calBar()+(CAL.mode==="month"?monthHtml():weekHtml())+trayHtml();
@@ -1338,6 +1388,7 @@ document.addEventListener("click",function(ev){
     case "dayadd": CAL.add=a.getAttribute("data-v"); if(CAL.add==="later") CAL.tray.later=true; render(); var dc=$("#cap"); if(dc) dc.focus(); break;
     case "tray": var tk=a.getAttribute("data-v"); CAL.tray[tk]=!CAL.tray[tk]; render(); break;
     case "inboxsave": inboxSave(); break;
+    case "doalltoday": doAllToday(); break;
     case "add": var c=$("#cap"); if(c&&addFromText(c.value)){ var c1=$("#cap"); if(c1){ c1.value=""; c1.style.height=""; c1.focus(); } } break;
     case "up": move(id,-1); break;
     case "down": move(id,1); break;
