@@ -88,6 +88,33 @@ for (const width of [390, 1100]) {
   });
 }
 
+test("a date read from words can be undone with one tap: Keep as text", async ({ page }) => {
+  await capture(page, "Call the shop sat");
+  await expect(page.locator("#toast")).toContainText("Added for");
+  await expect(page.locator("#undo")).toHaveText("Keep as text");
+  await page.locator("#undo").click();
+  const t = await byTitle(page, "Call the shop sat");
+  expect(t).toBeTruthy();
+  expect(t.due).toBeNull();
+  expect(t.plan).toBe(await page.evaluate(() => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); })); // added on Today, so it lands today
+  await expect(page.locator("#toast")).toContainText("Kept as text");
+
+  // In the Inbox, keeping it as text puts it back in the Inbox.
+  await page.locator('.nav[data-view="inbox"]').first().click();
+  await capture(page, "Prep for the review on mon");
+  await page.locator("#undo").click();
+  const u = await byTitle(page, "Prep for the review on mon");
+  expect(u.inbox).toBe(true);
+  expect(u.plan).toBeNull();
+
+  // "by" dates say Due, and no button when nothing was read from words.
+  await page.locator('.nav[data-view="today"]').first().click();
+  await capture(page, "Send report by fri");
+  await expect(page.locator("#toast")).toContainText("Due");
+  await capture(page, "Plain task");
+  await expect(page.locator("#undo")).toHaveCount(0);
+});
+
 test("deleting a project can be undone and its steps return", async ({ page }) => {
   await page.locator('.nav[data-view="projects"]').first().click();
   await page.locator('[data-act="togglenewp"]').click();

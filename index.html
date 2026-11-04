@@ -174,7 +174,8 @@ ul.list>li:first-child{border-top:0}
 .smaller input{flex:1;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--surface)}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(32px + env(safe-area-inset-bottom));background:var(--ink);color:var(--bg);padding:11px 18px;border-radius:14px;display:none;gap:14px;align-items:center;z-index:50;max-width:92%;font-size:15px}
 .toast.show{display:flex}
-.toast button{color:var(--accent);font-weight:700}
+.toast{width:max-content;max-width:min(92vw,520px)}
+.toast button{color:var(--accent);font-weight:700;white-space:nowrap;padding:6px 0 6px 4px}
 .sync{font-size:12px}
 .sync b{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--line2);margin-right:6px}
 .sync.ok b{background:var(--ok)}
@@ -218,6 +219,8 @@ function dayLabel(d){
   if(d===todayStr()) return "Today"; if(d===addDays(1)) return "Tomorrow";
   return dt(d).toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"});
 }
+/* For use mid-sentence: "today", "tomorrow", but "Sat, Nov 7" keeps its capitals. */
+function dayWord(d){ var l=dayLabel(d); return (l==="Today"||l==="Tomorrow")?l.toLowerCase():l; }
 var IC={
   cal:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>',
   spark:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16v4M17 18h4"/></svg>',
@@ -525,7 +528,7 @@ function dueLabel(d){
 var DOW={sun:0,sunday:0,mon:1,monday:1,tue:2,tues:2,tuesday:2,wed:3,weds:3,wednesday:3,thu:4,thur:4,thurs:4,thursday:4,fri:5,friday:5,sat:6,saturday:6};
 function parseWhen(s){
   var m, out={rest:s,plan:null,due:null};
-  function cut(m){ out.rest=s.slice(0,m.index); }
+  function cut(m){ out.rest=s.slice(0,m.index); out.words=s.slice(m.index).trim(); }
   if((m=s.match(/\s+(?:today|tonight)$/i))){ cut(m); out.plan=todayStr(); return out; }
   if((m=s.match(/\s+(?:tomorrow|tmrw|tmr)$/i))){ cut(m); out.plan=addDays(1); return out; }
   if((m=s.match(/\s+next week$/i))){ cut(m); out.plan=nextDow(1); return out; }
@@ -545,7 +548,7 @@ function parseLine(line){
   s=s.replace(/\s~(\d+)m?(?=\s)/g,function(m,n){t.est=+n;return " "});
   s=s.replace(/\s!(?=\s)/g,function(){t.today=true;return " "});
   s=s.replace(/\s+/g," ").trim();
-  var w=parseWhen(s); t.title=w.rest.trim(); t.plan=w.plan; t.due=w.due;
+  var w=parseWhen(s); t.title=w.rest.trim(); t.plan=w.plan; t.due=w.due; t.words=w.words||null;
   if(t.today&&!t.plan) t.plan=todayStr();
   return t;
 }
@@ -559,21 +562,37 @@ function findProject(name){
 }
 function addFromText(raw){
   var lines=raw.split(/\n+/).map(function(x){return x.trim()}).filter(Boolean);
-  var n=Date.now(), added=0, lastPlan=null;
+  var n=Date.now(), added=0, last=null, lastP=null;
   lines.forEach(function(line,i){
     var p=parseLine(line); if(!p.title) return;
     var pr=null;
     if(p.pname){ pr=findProject(p.pname); if(!pr){ pr={id:uid(),name:p.pname,sequential:false}; S.projects.push(pr); } }
     var t=mkTask({title:p.title,project:pr?pr.id:null,tags:p.tags,est:p.est,plan:p.plan,due:p.due,order:n+i});
     if(!t.project&&view.indexOf("p:")===0) t.project=view.slice(2);
-    if(!t.plan&&view==="today") t.plan=todayStr();
-    if(!t.plan&&view==="plan") t.plan=planDay;
-    if(view==="later"&&!t.plan&&!t.due) t.someday=true;   /* a date wins over parking it */
-    if(view==="inbox"&&!t.project&&!t.plan&&!t.due) t.inbox=true;
-    S.tasks.push(t); added++; lastPlan=t.plan;
+    placeByView(t);
+    S.tasks.push(t); added++; last=t; lastP=p;
   });
-  if(added){ save(); render(); toast(added===1?"Added"+(lastPlan?" for "+dayLabel(lastPlan).toLowerCase():"")+".":"Added "+added+" tasks."); }
+  if(!added) return 0;
+  save(); render();
+  if(added>1){ toast("Added "+added+" tasks."); return added; }
+  var msg=lastP.due&&!lastP.plan?"Added. "+dueLabel(last.due)+".":"Added"+(last.plan?" for "+dayWord(last.plan):"")+".";
+  if(!lastP.words){ toast(msg); return added; }
+  /* A date came from the last word(s). One tap undoes that reading and keeps the words in the title. */
+  var tid=last.id, words=lastP.words, bang=lastP.today, from=view;
+  toast(msg,function(){
+    var x=task(tid); if(!x) return;
+    x.title=x.title+" "+words; x.plan=bang?todayStr():null; x.due=null;
+    placeByView(x,from); save(); render(); toast("Kept as text. "+(x.plan?"Set for "+dayWord(x.plan)+".":"No date."));
+  },"Keep as text");
   return added;
+}
+/* Where a task with no date lands depends on the list you added it from. */
+function placeByView(t,v){
+  v=v||view;
+  if(!t.plan&&v==="today") t.plan=todayStr();
+  if(!t.plan&&v==="plan") t.plan=planDay;
+  if(v==="later"&&!t.plan&&!t.due) t.someday=true;   /* a date wins over parking it */
+  if(v==="inbox"&&!t.project&&!t.plan&&!t.due) t.inbox=true;
 }
 
 /* ---------- rendering ---------- */
@@ -608,7 +627,7 @@ function listHtml(arr,o,empty){
 function pullHtml(day){
   var all=listPullAll();
   if(!pullOpen) return '<div style="margin-top:14px"><button class="linkbtn" data-act="togglepull">+ Add from your lists'+(all.length?" ("+all.length+")":"")+'</button></div>';
-  var label=day===todayStr()?"today":dayLabel(day).toLowerCase();
+  var label=day===todayStr()?"today":dayWord(day);
   var f='<div class="filters" role="group" aria-label="Energy">'+[[null,"Any"],["low","Low energy"],["med","Medium"],["high","High"]].map(function(e){return '<button class="fchip'+(filt.energy===e[0]?" on":"")+'" data-energy="'+(e[0]||"")+'">'+e[1]+'</button>'}).join("")+'</div>';
   var h='<div class="section"><span>Add to '+esc(label)+'</span><button class="linkbtn" style="padding:0;min-height:0" data-act="togglepull">Hide</button></div>'+f;
   if(!all.length) return h+'<div class="card"><div class="empty">Nothing left to pull in.</div></div>';
@@ -659,7 +678,7 @@ function render(){
     }
     strip+='</div>';
     var pd=tasksForDay(planDay);
-    h=head("Plan",esc(dayLabel(planDay))+" &middot; "+pd.length+" planned")+strip+captureHtml("Add to "+dayLabel(planDay).toLowerCase())+
+    h=head("Plan",esc(dayLabel(planDay))+" &middot; "+pd.length+" planned")+strip+captureHtml("Add to "+dayWord(planDay))+
       listHtml(pd,{hidePlan:true},"Nothing set for this day.")+pullHtml(planDay);
   }else if(view==="inbox"){
     var a=listInbox();
@@ -695,6 +714,7 @@ function render(){
   var cap=$("#cap"), keep=cap&&document.activeElement===cap?cap.value:null;
   m.innerHTML=h;
   if(keep!==null&&$("#cap")){ $("#cap").value=keep; $("#cap").focus(); }
+  if($("#cap")) setHint(document.activeElement===$("#cap"));
 }
 function projCard(p){
   var all=S.tasks.filter(function(t){return t.project===p.id}), dn=all.filter(function(t){return t.done}).length;
@@ -729,7 +749,7 @@ function setDay(id,v){
   else if(v==="anytime"){ t.someday=false; t.plan=null; t.inbox=false; }
   else if(d){ t.plan=d; t.someday=false; t.inbox=false; }
   save(); closeSheet(); render();
-  toast(v==="later"?"Moved to Later.":v==="anytime"?"Date cleared.":"Set for "+dayLabel(d).toLowerCase()+".");
+  toast(v==="later"?"Moved to Later.":v==="anytime"?"Date cleared.":"Set for "+dayWord(d)+".");
 }
 function openTask(id){
   var t=task(id); if(!t) return;
@@ -1035,7 +1055,7 @@ document.addEventListener("click",function(ev){
     case "more": openMore(); break;
     case "setday": setDay(id,a.getAttribute("data-v")); break;
     case "setpick": var pv=$("#pickd").value; if(pv) setDay(id,pv); break;
-    case "pull": if(t){ t.plan=a.getAttribute("data-day"); t.inbox=false; save(); render(); toast("Added for "+dayLabel(t.plan).toLowerCase()+"."); } break;
+    case "pull": if(t){ t.plan=a.getAttribute("data-day"); t.inbox=false; save(); render(); toast("Added for "+dayWord(t.plan)+"."); } break;
     case "togglepull": pullOpen=!pullOpen; render(); break;
     case "togglenewp": newOpen=!newOpen; render(); if(newOpen&&$("#newp")) $("#newp").focus(); break;
     case "plantomorrow": planDay=addDays(1); view="plan"; render(); $("#main").scrollTop=0; break;
