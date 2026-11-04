@@ -768,11 +768,23 @@ function openBreak(id){
 function doBreak(id){
   var t=task(id); if(!t) return;
   var steps=cleanLines($("#b-steps").value); if(!steps.length) return;
-  var p={id:uid(),name:t.title,sequential:true}; S.projects.push(p);
-  var n=Date.now();
-  steps.forEach(function(s,i){ S.tasks.push(mkTask({title:s,project:p.id,plan:i===0?(t.plan||null):null,due:i===0?t.due:null,energy:t.energy,tags:(t.tags||[]).slice(),order:n+i})); });
+  /* Already in a project: the steps take the task's place there. Otherwise they become a new project. */
+  var p=proj(t.project), inPlace=!!p, start, gap;
+  if(inPlace){
+    var after=S.tasks.filter(function(x){return x.project===p.id&&x.id!==id&&x.order>t.order}).map(function(x){return x.order});
+    var next=after.length?Math.min.apply(null,after):t.order+steps.length;
+    start=t.order; gap=(next-t.order)/steps.length;
+  }else{
+    p={id:uid(),name:t.title,sequential:true}; S.projects.push(p);
+    start=Date.now(); gap=1;
+  }
+  steps.forEach(function(s,i){
+    S.tasks.push(mkTask({title:s,project:p.id,notes:i===0?(t.notes||""):"",plan:i===0?(t.plan||null):null,due:i===0?t.due:null,
+      energy:t.energy,tags:(t.tags||[]).slice(),est:null,order:start+i*gap}));
+  });
   S.tasks=S.tasks.filter(function(x){return x.id!==id});
-  save(); closeSheet(); view="p:"+p.id; render(); toast("Made a project with "+steps.length+" steps.");
+  save(); closeSheet(); view="p:"+p.id; render();
+  toast(inPlace?"Split into "+steps.length+" steps in "+p.name+".":"Made a project with "+steps.length+" steps.");
 }
 function cleanLines(txt){
   return String(txt).split(/\n+/).map(function(l){return l.replace(/^\s*(?:[-*•☐□]|\d+[.)])\s*/,"").replace(/^\[.?\]\s*/,"").trim()}).filter(Boolean);
@@ -1033,7 +1045,7 @@ document.addEventListener("click",function(ev){
     case "settings": openSettings(); break;
     case "closesheet": closeSheet(); break;
     case "savetask": saveTask(id); break;
-    case "breakdown": openBreak(id); break;
+    case "breakdown": if($("#f-title")&&$("#f-title").value.trim()) saveTask(id); openBreak(id); break;
     case "dobreak": doBreak(id); break;
     case "deltask":
       var gone1=task(id); if(!gone1) break;
