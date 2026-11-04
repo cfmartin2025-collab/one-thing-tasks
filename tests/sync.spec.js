@@ -49,9 +49,7 @@ const titles = (page) => page.evaluate(() => window.__app.state.tasks.map((t) =>
 const sync = (page) => page.evaluate(() => window.__app.sync());
 async function add(page, text) {
   await page.locator("#cap").fill(text);
-  await page.locator("#cap").press("Enter");
-  await page.locator("#cap").blur();
-}
+  await page.locator("#cap").press("Enter");}
 async function connect(page, token = TOKEN, expectText = "Last synced") {
   await page.locator('[data-act="settings"]').first().click();
   await page.locator("#gh-token").fill(token);

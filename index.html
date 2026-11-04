@@ -77,7 +77,7 @@ h1{font-family:var(--display);font-size:30px;line-height:1.1;margin:0;letter-spa
 .capture .go{width:40px;height:40px;border-radius:12px;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;flex:none}
 .capwrap{margin-bottom:22px}
 .hint{display:none;color:var(--muted);font-size:13px;margin:8px 6px 0}
-.capwrap:focus-within .hint{display:block}
+.capwrap.hinting .hint{display:block}
 .hint code{background:var(--soft);padding:1px 6px;border-radius:6px;font-size:12px}
 .banner{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:6px 8px 6px 16px;margin-bottom:16px;color:var(--muted);font-size:15px}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:16px;overflow:hidden}
@@ -1130,6 +1130,16 @@ document.addEventListener("keydown",function(ev){
   else if(ev.key==="Escape"){ if($("#veil").classList.contains("show")) closeSheet(); else if($("#focus").classList.contains("show")) closeFocus(); }
   else if(ev.key==="n"&&!/INPUT|TEXTAREA|SELECT/.test(ev.target.tagName)&&$("#cap")&&!$("#veil").classList.contains("show")){ ev.preventDefault(); $("#cap").focus(); }
 });
+/* Capture hint: shown while the box has focus. When focus leaves because of a press elsewhere,
+   hide it only after that press finishes, so the list does not jump up under the pointer mid-click. */
+var pressing=false, hintHide=false;
+function setHint(on){ var w=$(".capwrap"); if(w) w.classList.toggle("hinting",on); }
+document.addEventListener("pointerdown",function(){ pressing=true; },true);
+function endPress(){ pressing=false; if(hintHide){ hintHide=false; setTimeout(function(){ if(document.activeElement!==$("#cap")) setHint(false); },80); } }
+document.addEventListener("pointerup",endPress,true);
+document.addEventListener("pointercancel",endPress,true);
+document.addEventListener("focusin",function(ev){ if(ev.target.id==="cap"){ hintHide=false; setHint(true); } });
+document.addEventListener("focusout",function(ev){ if(ev.target.id==="cap"){ if(pressing) hintHide=true; else setHint(false); } });
 document.addEventListener("input",function(ev){
   if(ev.target.id==="cap"){ ev.target.style.height="auto"; ev.target.style.height=Math.min(ev.target.scrollHeight,160)+"px"; }
 });

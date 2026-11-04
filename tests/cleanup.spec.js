@@ -19,9 +19,7 @@ test.afterEach(async () => { expect(pageErrors, "uncaught page errors").toEqual(
 
 async function capture(page, text) {
   await page.locator("#cap").fill(text);
-  await page.locator("#cap").press("Enter");
-  await page.locator("#cap").blur(); // TEMP: remove with the click-shift fix
-}
+  await page.locator("#cap").press("Enter");}
 const row = (page, title) => page.locator("li.task", { hasText: title });
 
 test("deleting a task can be undone, and the undo is synced as a re-add", async ({ page }) => {
@@ -78,6 +76,17 @@ test("adding in Later with a date schedules it instead of hiding it", async ({ p
   expect((await byTitle(page, "Plain idea")).someday).toBe(true);
   await expect(page.locator("#toast")).toContainText("Added");
 });
+
+for (const width of [390, 1100]) {
+  test(`first click after typing lands where aimed (${width}px)`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 860 });
+    await capture(page, "Aim here");
+    await expect(page.locator(".capwrap .hint")).toBeVisible(); // still typing: hint shows
+    await row(page, "Aim here").locator('[data-act="when"]').click();
+    await expect(page.locator("#sheet h2")).toHaveText("When?");
+    await expect(page.locator(".capwrap .hint")).toBeHidden(); // hint gone once the click is done
+  });
+}
 
 test("deleting a project can be undone and its steps return", async ({ page }) => {
   await page.locator('.nav[data-view="projects"]').first().click();

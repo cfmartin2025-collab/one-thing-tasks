@@ -30,9 +30,6 @@ async function capture(page, text) {
   const cap = page.locator("#cap");
   await cap.fill(text);
   await cap.press("Enter");
-  // Known issue: blurring the capture box hides its hint and shifts the list up mid-click,
-  // so the first click after typing can miss. Blur first so tests click where they aim.
-  await cap.blur();
 }
 
 test("loads, seeds examples, hides Claude buttons without window.claude", async ({ page }) => {
